@@ -1,0 +1,374 @@
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE SYSTICK
+OBJECT MODULE PLACED IN .\Objects\systick.obj
+COMPILER INVOKED BY: D:\tool chain\keil c51 v6\C51\BIN\C51.EXE Application\systick.c LARGE OPTIMIZE(8,SPEED) BROWSE INCD
+                    -IR(.\Device\Include;.\StdDriver\inc;.\RTX Tiny2\inc;.\TM1650;.\Application) DEFINE(FOSC_240000) DEBUG OBJECTEXTEND SYMBO
+                    -LS PRINT(.\Listings\systick.lst) TABS(2) OBJECT(.\Objects\systick.obj)
+
+line level    source
+
+   1          #include "systick.h"
+   2          #include "button.h"
+   3          #include "eeprom.h"
+   4          #include <RTX51TNY.h>
+   5          
+   6          /* if define TIMER0_FSYS_DIV12, timer = (0xFFFF-0x1000)*12/24MHz = 36.58ms */
+   7          /* if define TIMER0_FSYS, timer = (0xFFFF-0x1000)/24MHz = 2.54ms */
+   8          #define TH1_INIT        0x10
+   9          #define TL1_INIT        0x00
+  10          #define MAX_TRIGGER     100
+  11          
+  12          static unsigned int g_u32SystemTick = 0;
+  13          struct rfCode {
+  14            unsigned int level;
+  15            unsigned int duration;
+  16          };
+  17          unsigned int tButton = 0;
+  18          static xdata struct rfCode g_codes[MAX_TRIGGER] = {0};
+  19          //@TODO: save into flash
+  20          static xdata unsigned char g_addresses[MAX_TRIGGER/2] = {0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0
+             -, 0, 1};
+  21          static xdata unsigned char g_decodes[MAX_TRIGGER/2] = {0};
+  22          static unsigned int i = 0;
+  23          static unsigned int i_decodes = 0;
+  24          static unsigned int val = 0;
+  25          static unsigned int g_u32Timer2Overflow = 0;
+  26          
+  27          static void user_systemtick_callback(void)
+  28          {
+  29   1        g_u32SystemTick ++;
+  30   1      }
+  31          
+  32          /*********************************************************************************************************
+             -***
+  33          *    TIMER 0 interrupt subroutine
+  34          **********************************************************************************************************
+             -**/
+  35          void Timer1_ISR (void) interrupt 3  //interrupt address is 0x000B
+  36          {
+  37   1          _push_(SFRS);
+  38   1        
+  39   1        TH1 = TH1_INIT;
+  40   1          TL1 = TL1_INIT;    
+  41   1          TF1 = 0;
+  42   1          user_systemtick_callback();
+  43   1      
+  44   1          _pop_(SFRS);
+  45   1      }
+  46          
+  47          void Timer2_ISR (void) interrupt 5  //interrupt address is 0x000B
+  48          {
+  49   1          _push_(SFRS);
+  50   1        
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 2   
+
+  51   1        //TH2 = 0;
+  52   1          //TL2 = 0;    
+  53   1          //TF2 = 0;
+  54   1          g_u32Timer2Overflow ++;
+  55   1        clr_T2CON_TF2;
+  56   1          _pop_(SFRS);
+  57   1      }
+  58          
+  59          /*********************************************************************************************************
+             -***
+  60          *    start_systemtick 
+  61          **********************************************************************************************************
+             -**/
+  62          void start_Timer1_SystemTick (void)
+  63          {  
+  64   1          ENABLE_TIMER1_MODE1;
+  65   1          TIMER1_FSYS;
+  66   1      
+  67   1          TH1 = TH1_INIT;
+  68   1          TL1 = TL1_INIT;
+  69   1          
+  70   1          ENABLE_TIMER1_INTERRUPT;                       //enable Timer0 interrupt
+  71   1          ENABLE_GLOBAL_INTERRUPT;                       //enable interrupts
+  72   1        
+  73   1          set_TCON_TR1;                                  //Timer0 run
+  74   1      }
+  75          
+  76          /*********************************************************************************************************
+             -***/
+  77          /*    Capture interrupt subroutine                                                                   */
+  78          /*********************************************************************************************************
+             -***/
+  79          void Capture_ISR (void) interrupt 12
+  80          {
+  81   1          _push_(SFRS);
+  82   1        clr_CAPCON0_CAPF2;                  /* clear capture0 interrupt flag  */
+  83   1        val = C2L + (C2H << 8) + 0xffff*g_u32Timer2Overflow;
+  84   1        g_u32Timer2Overflow = 0;
+  85   1        g_codes[i].duration = val;              /* For capture mode CxL/CxH with data capture from I/O pin*/
+  86   1        g_codes[i].level = !P10;  
+  87   1        if (i == MAX_TRIGGER - 1)
+  88   1        {
+  89   2          i = 0;
+  90   2          i_decodes = 0;
+  91   2          //clr_T2CON_TR2;                       //Triger Timer2
+  92   2          decode();
+  93   2          memset(&g_codes, 0, sizeof(struct rfCode)*MAX_TRIGGER);
+  94   2        }
+  95   1        i ++;
+  96   1        C2L = 0;
+  97   1        C2H = 0;
+  98   1          _pop_(SFRS);
+  99   1      }
+ 100          /*********************************************************************************************************
+             -***/
+ 101          /*    Main function                                                                                       
+             -  */
+ 102          /*********************************************************************************************************
+             -***/
+ 103          void enable_Timer2_IC2 (void)
+ 104          {
+ 105   1          P10_QUASI_MODE;
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 3   
+
+ 106   1        TIMER2_CAP2_Capture_Mode;
+ 107   1          IC2_P10_CAP3_BOTHEDGE_CAPTURE;
+ 108   1        T2MOD |= 0x20;                       // prescaler is 16 
+ 109   1          set_EIE_ECAP;                        //Enable Capture interrupt
+ 110   1        set_EIE_ET2;                         //Enable Timer2 Interrupt
+ 111   1          set_T2CON_TR2;                       //Triger Timer2
+ 112   1          ENABLE_GLOBAL_INTERRUPT;
+ 113   1      }
+ 114          
+ 115          uint32_t get_Timer1_Systemtick(void)
+ 116          {
+ 117   1        return g_u32SystemTick;
+ 118   1      }
+ 119          
+ 120          unsigned char Timer1_Delay2Dot54ms_Unblocked(uint32_t start, uint32_t nms)
+ 121          {
+ 122   1        while (get_Timer1_Systemtick() - start < nms){
+ 123   2          os_switch_task();
+ 124   2        }
+ 125   1        return 1;
+ 126   1      }
+ 127          
+ 128          unsigned char Timer1_Delay2Dot54ms_blocked(uint32_t start, uint32_t nms)
+ 129          {
+ 130   1        while (get_Timer1_Systemtick() - start < nms);
+ 131   1        return 1;
+ 132   1      }
+ 133          
+ 134          unsigned char decode(void)
+ 135          {
+ 136   1        unsigned int j = 0; // index to loop over g_codes
+ 137   1        unsigned int major = 0;
+ 138   1        unsigned int minor = 0;
+ 139   1        unsigned int found = FALSE;
+ 140   1        unsigned int head = 0;
+ 141   1        for(j = 0; j<MAX_TRIGGER; j++)
+ 142   1        {
+ 143   2          if (g_codes[j].level == 0
+ 144   2            && g_codes[j].duration > 0x3000)
+ 145   2          {
+ 146   3            head = j;
+ 147   3            found ++;
+ 148   3          }
+ 149   2          if(found >= 1 && found < 2)
+ 150   2          {
+ 151   3            if (g_codes[j].level == 1
+ 152   3              && j < MAX_TRIGGER - 1
+ 153   3              && j%2 == (head+1)%2)
+ 154   3            {
+ 155   4              if(g_codes[j+1].duration > g_codes[j].duration)
+ 156   4              {
+ 157   5                major = g_codes[j+1].duration/g_codes[j].duration;
+ 158   5                minor = g_codes[j+1].duration%g_codes[j].duration;
+ 159   5                if (minor > g_codes[j].duration/2)
+ 160   5                  major += 1;
+ 161   5                if (major == 3)
+ 162   5                {
+ 163   6                  g_decodes[i_decodes++]=0;
+ 164   6                }
+ 165   5              }
+ 166   4              else if(g_codes[j+1].duration < g_codes[j].duration)
+ 167   4              {
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 4   
+
+ 168   5                major = g_codes[j].duration/g_codes[j+1].duration;
+ 169   5                minor = g_codes[j].duration%g_codes[j+1].duration;
+ 170   5                if (minor > g_codes[j+1].duration/2)
+ 171   5                  major += 1;
+ 172   5                if (major == 3)
+ 173   5                {
+ 174   6                  g_decodes[i_decodes++]=1;
+ 175   6                }
+ 176   5              }
+ 177   4            }
+ 178   3          }
+ 179   2        }
+ 180   1        if (i_decodes == 24){
+ 181   2          tButton = getRfButtonCode();
+ 182   2          if (tButton == RF_BUTTON_START || tButton == RF_BUTTON_STOP)
+ 183   2            saveToFlash();
+ 184   2          else if (match())
+ 185   2          {
+ 186   3            tButton = getRfButtonCode();
+ 187   3          }
+ 188   2        }
+ 189   1        return i_decodes; 
+ 190   1      }
+ 191          
+ 192          unsigned char saveToFlash()
+ 193          {
+ 194   1        if (i_decodes == 0x18)
+ 195   1        {
+ 196   2          memcpy(g_addresses, g_decodes, 19);
+ 197   2          return TRUE;
+ 198   2        }
+ 199   1        return FALSE;
+ 200   1      }
+ 201          
+ 202          unsigned char match(void)
+ 203          {
+ 204   1        if(memcmp(g_addresses, g_decodes, 19) == 0)
+ 205   1          return TRUE;
+ 206   1        return FALSE;
+ 207   1      }
+ 208          
+ 209          unsigned char getRfButtonCode()
+ 210          {
+ 211   1        unsigned char index = 0;
+ 212   1        unsigned char val = 0;
+ 213   1        if (oneFrameReceived())
+ 214   1        {
+ 215   2          for(index = 5; index > 0; index --)
+ 216   2          {
+ 217   3            if (g_decodes[24-index])
+ 218   3              val |= (0x01 << (index - 1));
+ 219   3            else
+ 220   3              val &= ~(0x01 << (index - 1));
+ 221   3          }
+ 222   2        }
+ 223   1        return val;
+ 224   1      }
+ 225          
+ 226          unsigned char oneFrameReceived()
+ 227          {
+ 228   1        return i_decodes == 24;
+ 229   1      }
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 5   
+
+ 230          
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 6   
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+uint16_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+P1M1 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B3H  1
+P0 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0080H  1
+P1M2 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B4H  1
+P1 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0090H  1
+P2 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A0H  1
+P3 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B0H  1
+Timer1_ISR . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+Timer2_ISR . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+EA . . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      00AFH  1
+PWMCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D8H  1
+g_addresses. . . . . . . . . . . . . .  STATIC   XDATA  ARRAY    0000H  50
+user_systemtick_callback . . . . . . .  STATIC   CODE   PROC     0000H  -----
+IE . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A8H  1
+match. . . . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+size_t . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+TA . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C7H  1
+IP . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B8H  1
+enable_Timer2_IC2. . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+g_decodes. . . . . . . . . . . . . . .  STATIC   XDATA  ARRAY    0032H  50
+i_decodes. . . . . . . . . . . . . . .  STATIC   XDATA  U_INT    0064H  2
+buttonState. . . . . . . . . . . . . .  * TAG *  -----  STRUCT   -----  7
+  cod. . . . . . . . . . . . . . . . .  MEMBER   -----  U_CHAR   0000H  1
+  dur. . . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0001H  2
+  start. . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0003H  2
+  end. . . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0005H  2
+UINT32 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+Capture_ISR. . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+UINT16 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+_Timer1_Delay2Dot54ms_Unblocked. . . .  PUBLIC   CODE   PROC     0000H  -----
+  start. . . . . . . . . . . . . . . .  AUTO     XDATA  U_LONG   0000H  4
+  nms. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_LONG   0004H  4
+P10. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      0090H  1
+BIT_TMP. . . . . . . . . . . . . . . .  EXTERN   DATA   BIT      -----  1
+g_u32Timer2Overflow. . . . . . . . . .  STATIC   XDATA  U_INT    0066H  2
+SCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0098H  1
+TMOD . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0089H  1
+TCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0088H  1
+g_u32SystemTick. . . . . . . . . . . .  STATIC   XDATA  U_INT    0068H  2
+C2H. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00EEH  1
+start_Timer1_SystemTick. . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+SFRS . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0091H  1
+C2L. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00EDH  1
+val. . . . . . . . . . . . . . . . . .  STATIC   XDATA  U_INT    006AH  2
+SCON_1 . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00F8H  1
+ET1. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      00ABH  1
+TF1. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      008FH  1
+TF2. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      00CFH  1
+TH1. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   008DH  1
+uint8_t. . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+TL1. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   008BH  1
+EIE. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   009BH  1
+rfCode . . . . . . . . . . . . . . . .  * TAG *  -----  STRUCT   -----  4
+  level. . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0000H  2
+  duration . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0002H  2
+TR1. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      008EH  1
+g_codes. . . . . . . . . . . . . . . .  STATIC   XDATA  ARRAY    006CH  400
+C51 COMPILER V9.60.7.0   SYSTICK                                                           09/27/2024 10:00:24 PAGE 7   
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+TR2. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      00CAH  1
+ADCCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00E8H  1
+I2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C0H  1
+oneFrameReceived . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+BIT. . . . . . . . . . . . . . . . . .  TYPEDEF  -----  BIT      -----  1
+CAPCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0092H  1
+saveToFlash. . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+decode . . . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  j. . . . . . . . . . . . . . . . . .  * REG *  DATA   U_INT    0002H  2
+  major. . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  minor. . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+  found. . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0004H  2
+  head . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0006H  2
+T2MOD. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C9H  1
+T2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C8H  1
+CAPCON1. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0093H  1
+i. . . . . . . . . . . . . . . . . . .  STATIC   XDATA  U_INT    01FCH  2
+_Timer1_Delay2Dot54ms_blocked. . . . .  PUBLIC   CODE   PROC     0000H  -----
+  start. . . . . . . . . . . . . . . .  AUTO     XDATA  U_LONG   0000H  4
+  nms. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_LONG   0004H  4
+CAPCON2. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0094H  1
+CAPCON4. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00F2H  1
+os_switch_task . . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+get_Timer1_Systemtick. . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+CKCON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   008EH  1
+tButton. . . . . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    01FEH  2
+getRfButtonCode. . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  index. . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0000H  1
+  val. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0001H  1
+UINT8. . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+PSW. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D0H  1
+uint32_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1507    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    512      26
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

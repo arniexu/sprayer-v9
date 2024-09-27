@@ -1,0 +1,1453 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\tool chain\keil c51 v6\C51\BIN\C51.EXE main.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Device\Inc
+                    -lude;.\StdDriver\inc;.\RTX Tiny2\inc;.\TM1650;.\Application) DEFINE(FOSC_240000) DEBUG OBJECTEXTEND SYMBOLS PRINT(.\List
+                    -ings\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*--------------------------------------------------------------------------------------------------------
+             --*/
+   2          /*                                                                                                        
+             - */
+   3          /* Copyright(c) 2020 nuvoton Technology Corp. All rights reserved.                                        
+             - */
+   4          /*                                                                                                        
+             - */
+   5          /*--------------------------------------------------------------------------------------------------------
+             --*/
+   6          
+   7          /*********************************************************************************************************
+             -**/
+   8          /* Website: http://www.nuvoton.com                                                                        
+             - */
+   9          /*  E-Mail : MicroC-8bit@nuvoton.com                                                                      
+             - */
+  10          /*  Date   : June/21/2020                                                                                 
+             -  */
+  11          /*********************************************************************************************************
+             -**/
+  12          
+  13          /*********************************************************************************************************
+             -***/
+  14          /*  File Function: MS51 DEMO project                                                                      
+             -  */
+  15          /*********************************************************************************************************
+             -***/
+  16          #include <RTX51TNY.h>
+  17          #include "Application/button.h"
+  18          #include "Application/systick.h"
+  19          #include "MS51_16K.h"
+  20          #include "output.h"
+  21          #include "i2c_gpio.h"
+  22          #include "timer.h"
+  23          #include "I2C_M.h"
+  24          #include "tm1650.h"
+  25          #include "button.h"
+  26          #include "systick.h"
+  27          #include "nv.h"
+  28          #include <stdio.h>
+  29          #include <stdlib.h>
+  30          
+  31          /*
+  32          timer 0 is used for rtx51 system tick
+  33          timer 2 is used for input capture
+  34          timer 1 is used for user system tick
+  35          timer 3 is used for printf
+  36          uart 0 is used for printf
+  37          */
+  38          
+  39          #define STOP_REASON_USER_ABORT 1
+  40          #define STOP_REASON_WATER_SHORT 2
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 2   
+
+  41          
+  42          struct TM1650TypeDef tm1650;
+  43          struct buttonState prevButton;
+  44          unsigned char button;
+  45          unsigned char displayBuffer[4] ={0};
+  46          #define SOLID_ON 0
+  47          #define SLOW_BLINK 1
+  48          #define FAST_BLINK 2
+  49          #define CIRCULAR_WAITING 3
+  50          #define WAIT_WATER 4
+  51          unsigned char blinkFlag[4] = {FALSE, FALSE, FALSE, FALSE};
+  52          unsigned char dotBlinkFlag[4] = {FALSE, FALSE, FALSE, FALSE};
+  53          unsigned char dotFlag[4] = {FALSE, FALSE, FALSE, FALSE};
+  54          //@TODO: save below 4 variables into flash
+  55          unsigned int start_multiplier = 0;
+  56          unsigned int start_counter = 0;
+  57          unsigned int stop_multiplier = 0;
+  58          unsigned int stop_counter = 0;
+  59          extern unsigned int tButton;
+  60          unsigned int stopReason = 0;
+  61          unsigned int level_water_short = 0;
+  62          unsigned int delay_water_short = 0;
+  63          
+  64          #define LEFT_FUNCTION_1_MODE 1
+  65          #define LEFT_FUNCTION_2_MODE 2
+  66          #define LEFT_FUNCTION_3_MODE 3
+  67          #define LEFT_FUNCTION_4_MODE 4
+  68          #define LEFT_FUNCTION_5_MODE 5
+  69          #define LEFT_FUNCTION_6_MODE 6
+  70          #define LEFT_FUNCTION_7_MODE 7
+  71          #define LEFT_FUNCTION_8_MODE 8
+  72          #define LEFT_TIME_EFFECTIVE_MODE 9
+  73          
+  74          #define RIGHT_FUNCTION_1_MODE 11
+  75          #define RIGHT_FUNCTION_2_MODE 12
+  76          #define RIGHT_FUNCTION_3_MODE 13
+  77          #define RIGHT_FUNCTION_4_MODE 14
+  78          #define RIGHT_FUNCTION_5_MODE 15
+  79          #define RIGHT_FUNCTION_6_MODE 16
+  80          #define RIGHT_FUNCTION_7_MODE 17
+  81          #define RIGHT_FUNCTION_8_MODE 18
+  82          #define RIGHT_TIME_EFFECTIVE_MODE 19
+  83          #define LEARN_MODE 21
+  84          
+  85          unsigned int learning = TRUE;
+  86          
+  87          unsigned char right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+  88          unsigned char left_mode = LEFT_TIME_EFFECTIVE_MODE;
+  89          
+  90          #define SPRAY_STARTING 1
+  91          #define SPRAY_STOPPING 2
+  92          #define SPRAY_WAITING 3
+  93          #define SPRAY_DELAYING 4
+  94          #define SPRAY_IDLE 0
+  95          
+  96          unsigned int spraying = SPRAY_IDLE;
+  97          
+  98          unsigned int g_button = 0;
+  99          
+ 100          unsigned char start_spray();
+ 101          unsigned char stop_spray();
+ 102          void beeper_once();
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 3   
+
+ 103          unsigned int readStopMultiplier();
+ 104          unsigned int readStartMultiplier();
+ 105          unsigned char readStopCounter(void);
+ 106          unsigned char readStartCounter(void);
+ 107          unsigned char readLeftMode(void);
+ 108          unsigned char readRightMode(void);
+ 109          unsigned char readWaterShortLevel(void);
+ 110          unsigned char readWaterShortDelay(void);
+ 111          void writeFlash();
+ 112          
+ 113          void display_when_learning()
+ 114          {
+ 115   1        if(right_mode == LEARN_MODE && left_mode == LEARN_MODE)
+ 116   1        {
+ 117   2          displayBuffer[0] = '-';
+ 118   2          displayBuffer[1] = '-';
+ 119   2          displayBuffer[2] = '-';
+ 120   2          displayBuffer[3] = '-';
+ 121   2          blinkFlag[0] = blinkFlag[2] = blinkFlag[3] = SOLID_ON;
+ 122   2          blinkFlag[1] = SLOW_BLINK;
+ 123   2          dotFlag[0] = dotFlag[2] = dotFlag[1] = FALSE;
+ 124   2          dotFlag[3] = TRUE;
+ 125   2        }
+ 126   1        //os_set_ready(1);
+ 127   1        //os_switch_task();
+ 128   1      }
+ 129          
+ 130          
+ 131          void display_when_water_is_short()
+ 132          {
+ 133   1        // circular waiting
+ 134   1        displayBuffer[0] = '0';
+ 135   1        displayBuffer[1] = '0';
+ 136   1        displayBuffer[2] = '0';
+ 137   1        displayBuffer[3] = '0';
+ 138   1        blinkFlag[0] = blinkFlag[1] = blinkFlag[2] = blinkFlag[3] = WAIT_WATER;
+ 139   1        dotFlag[0] = dotFlag[1] = dotFlag[2] = dotFlag[3] = TRUE;
+ 140   1      }
+ 141          void display_when_learn_complete()
+ 142          {
+ 143   1        if (right_mode == LEARN_MODE && left_mode == LEARN_MODE) {
+ 144   2          displayBuffer[0] = '-';
+ 145   2          displayBuffer[1] = '-';
+ 146   2          displayBuffer[2] = '-';
+ 147   2          displayBuffer[3] = '-';
+ 148   2          blinkFlag[0] = blinkFlag[1] = blinkFlag[2] = blinkFlag[3] = FAST_BLINK;
+ 149   2          dotFlag[0] = dotFlag[1] = dotFlag[2] = FALSE;
+ 150   2          dotFlag[3] = FALSE;
+ 151   2        }
+ 152   1        //os_set_ready(1);
+ 153   1        //os_switch_task();
+ 154   1      }
+ 155          
+ 156          // left business logic
+ 157          void left_business_logic() 
+ 158          {
+ 159   1          switch(left_mode)
+ 160   1          {
+ 161   2            case LEFT_FUNCTION_1_MODE:
+ 162   2              displayBuffer[0] = 'F';
+ 163   2              displayBuffer[1] = '1';
+ 164   2              blinkFlag[0] = FALSE;
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 4   
+
+ 165   2              blinkFlag[1] = TRUE;
+ 166   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 167   2              start_multiplier = 40; // 0.1s
+ 168   2              // wait_button_blocked
+ 169   2              if (button == LEFT_SET_BUTTON)
+ 170   2                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 171   2              else if(button == LEFT_UP_BUTTON)
+ 172   2                left_mode = LEFT_FUNCTION_2_MODE;
+ 173   2              else if(button == LEFT_DOWN_BUTTON)
+ 174   2                left_mode = LEFT_FUNCTION_6_MODE;
+ 175   2              else if (button == LEARN_BUTTON)
+ 176   2              {
+ 177   3                left_mode = LEARN_MODE;
+ 178   3              }
+ 179   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 180   2              {
+ 181   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 182   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 183   3              }
+ 184   2              break;
+ 185   2            case LEFT_FUNCTION_2_MODE:
+ 186   2              displayBuffer[0] = 'F';
+ 187   2              displayBuffer[1] = '2';
+ 188   2              blinkFlag[0] = FALSE;
+ 189   2              blinkFlag[1] = TRUE;
+ 190   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 191   2              start_multiplier = 400; // 1s
+ 192   2              // wait_button_blocked
+ 193   2              if (button == LEFT_SET_BUTTON)
+ 194   2                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 195   2              else if(button == LEFT_UP_BUTTON)
+ 196   2                left_mode = LEFT_FUNCTION_3_MODE;
+ 197   2              else if(button == LEFT_DOWN_BUTTON)
+ 198   2                left_mode = LEFT_FUNCTION_1_MODE;
+ 199   2              else if (button == LEARN_BUTTON)
+ 200   2              {
+ 201   3                left_mode = LEARN_MODE;
+ 202   3              }
+ 203   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 204   2              {
+ 205   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 206   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 207   3              }
+ 208   2              break;
+ 209   2            case LEFT_FUNCTION_3_MODE:
+ 210   2              displayBuffer[0] = 'F';
+ 211   2              displayBuffer[1] = '3';
+ 212   2              blinkFlag[0] = FALSE;
+ 213   2              blinkFlag[1] = TRUE;
+ 214   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 215   2              start_multiplier = 2400; //0.1min
+ 216   2              // wait_button_blocked
+ 217   2              if (button == LEFT_SET_BUTTON)
+ 218   2                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 219   2              else if(button == LEFT_UP_BUTTON)
+ 220   2                left_mode = LEFT_FUNCTION_4_MODE;
+ 221   2              else if(button == LEFT_DOWN_BUTTON)
+ 222   2                left_mode = LEFT_FUNCTION_2_MODE;
+ 223   2              else if (button == LEARN_BUTTON)
+ 224   2              {
+ 225   3                left_mode = LEARN_MODE;
+ 226   3              }
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 5   
+
+ 227   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 228   2              {
+ 229   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 230   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 231   3              }
+ 232   2              break;
+ 233   2            case LEFT_FUNCTION_4_MODE:
+ 234   2              displayBuffer[0] = 'F';
+ 235   2              displayBuffer[1] = '4';
+ 236   2              blinkFlag[0] = FALSE;
+ 237   2              blinkFlag[1] = TRUE;
+ 238   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 239   2              start_multiplier = 24000; //1min
+ 240   2              // wait_button_blocked
+ 241   2              if (button == LEFT_SET_BUTTON)
+ 242   2                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 243   2              else if(button == LEFT_UP_BUTTON)
+ 244   2                left_mode = LEFT_FUNCTION_5_MODE;
+ 245   2              else if(button == LEFT_DOWN_BUTTON)
+ 246   2                left_mode = LEFT_FUNCTION_3_MODE;
+ 247   2              else if (button == LEARN_BUTTON)
+ 248   2              {
+ 249   3                left_mode = LEARN_MODE;
+ 250   3              }
+ 251   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 252   2              {
+ 253   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 254   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 255   3              }
+ 256   2              break;
+ 257   2            case LEFT_FUNCTION_5_MODE:
+ 258   2              displayBuffer[0] = 'F';
+ 259   2              displayBuffer[1] = '5';
+ 260   2              blinkFlag[0] = FALSE;
+ 261   2              blinkFlag[1] = TRUE;
+ 262   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 263   2              start_multiplier = 144000; //6 min
+ 264   2              // wait_button_blocked
+ 265   2              if (button == LEFT_SET_BUTTON)
+ 266   2                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 267   2              else if(button == LEFT_UP_BUTTON)
+ 268   2                left_mode = LEFT_FUNCTION_6_MODE;
+ 269   2              else if(button == LEFT_DOWN_BUTTON)
+ 270   2                left_mode = LEFT_FUNCTION_4_MODE;
+ 271   2              else if (button == LEARN_BUTTON)
+ 272   2              {
+ 273   3                left_mode = LEARN_MODE;
+ 274   3              }
+ 275   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 276   2              {
+ 277   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 278   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 279   3              }
+ 280   2              break;
+ 281   2            case LEFT_FUNCTION_6_MODE:
+ 282   2              displayBuffer[0] = 'F';
+ 283   2              displayBuffer[1] = '6';
+ 284   2              blinkFlag[0] = FALSE;
+ 285   2              blinkFlag[1] = TRUE;
+ 286   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 287   2              start_multiplier = 60*60*400; //60 min
+ 288   2              // wait_button_blocked
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 6   
+
+ 289   2              if (button == LEFT_SET_BUTTON)
+ 290   2                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 291   2              else if(button == LEFT_UP_BUTTON)
+ 292   2                left_mode = LEFT_FUNCTION_1_MODE;
+ 293   2              else if(button == LEFT_DOWN_BUTTON)
+ 294   2                left_mode = LEFT_FUNCTION_5_MODE;
+ 295   2              else if (button == LEARN_BUTTON)
+ 296   2              {
+ 297   3                left_mode = LEARN_MODE;
+ 298   3              }
+ 299   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 300   2              {
+ 301   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 302   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 303   3              }
+ 304   2              break;
+ 305   2            case LEFT_TIME_EFFECTIVE_MODE:
+ 306   2              if(spraying == SPRAY_IDLE || spraying == SPRAY_STARTING)
+ 307   2              {
+ 308   3                blinkFlag[0] = blinkFlag[1] = FALSE;
+ 309   3                displayBuffer[0] = '0'+(start_counter/10)%10;
+ 310   3                displayBuffer[1] = '0'+start_counter%10;
+ 311   3                if(start_multiplier == 40
+ 312   3                  || start_multiplier == 40*10*6
+ 313   3                  || start_multiplier == 40*10*6*10*6)
+ 314   3                {
+ 315   4                  dotFlag[0] = TRUE;
+ 316   4                  dotFlag[1] = FALSE;
+ 317   4                }
+ 318   3                else
+ 319   3                  dotFlag[0] = dotFlag[1] = FALSE;
+ 320   3              }
+ 321   2              else if(spraying == SPRAY_DELAYING || spraying == SPRAY_WAITING)
+ 322   2              {
+ 323   3                display_when_water_is_short();
+ 324   3              }
+ 325   2              else
+ 326   2              {
+ 327   3                blinkFlag[0] = blinkFlag[1] = FALSE;
+ 328   3                displayBuffer[0] = 0;
+ 329   3                displayBuffer[1] = 0;
+ 330   3                dotFlag[0] = dotFlag[1] = FALSE;
+ 331   3              }
+ 332   2              // wait_button_blocked
+ 333   2              if (button == LEFT_SET_BUTTON)
+ 334   2                left_mode = readLeftMode();
+ 335   2              else if(button == LEFT_UP_BUTTON)
+ 336   2              {
+ 337   3                if (start_counter == 99)
+ 338   3                  start_counter = 0;
+ 339   3                else
+ 340   3                  start_counter ++;
+ 341   3      
+ 342   3              }
+ 343   2              else if(button == LEFT_DOWN_BUTTON)
+ 344   2              {
+ 345   3                if (start_counter == 0)
+ 346   3                  start_counter = 99;
+ 347   3                else 
+ 348   3                  start_counter --;
+ 349   3              }
+ 350   2              else if (button == LEARN_BUTTON)
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 7   
+
+ 351   2              {
+ 352   3                left_mode = LEARN_MODE;
+ 353   3              }
+ 354   2              else if (button == LEFT_SET_LONG_BUTTON)
+ 355   2              {
+ 356   3                left_mode = LEFT_FUNCTION_7_MODE;
+ 357   3                right_mode = RIGHT_FUNCTION_7_MODE;
+ 358   3              }
+ 359   2              break;
+ 360   2            case LEARN_MODE:
+ 361   2              if (learning)
+ 362   2              {
+ 363   3                display_when_learning();
+ 364   3              }
+ 365   2              else
+ 366   2              {
+ 367   3                display_when_learn_complete();
+ 368   3              }
+ 369   2              break;
+ 370   2            case LEFT_FUNCTION_7_MODE:
+ 371   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 372   2              displayBuffer[0] = 'F';
+ 373   2              displayBuffer[1] = '7';
+ 374   2              blinkFlag[0] = FALSE;
+ 375   2              blinkFlag[1] = TRUE;
+ 376   2              if(button == LEFT_SET_BUTTON){
+ 377   3                right_mode = RIGHT_FUNCTION_8_MODE;
+ 378   3                left_mode = LEFT_FUNCTION_8_MODE;
+ 379   3              }
+ 380   2              break;
+ 381   2            case LEFT_FUNCTION_8_MODE:
+ 382   2              dotFlag[0] = dotFlag[1] = FALSE;
+ 383   2              displayBuffer[0] = 'F';
+ 384   2              displayBuffer[1] = '8';
+ 385   2              blinkFlag[0] = FALSE;
+ 386   2              blinkFlag[1] = TRUE;
+ 387   2              if (button == LEFT_SET_BUTTON)
+ 388   2              {
+ 389   3                left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 390   3                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 391   3              }
+ 392   2              break;
+ 393   2            default:
+ 394   2              break;
+ 395   2          }
+ 396   1        return;
+ 397   1      }
+ 398          unsigned int water_is_not_short()
+ 399          {
+ 400   1        unsigned int water_present = TRUE;
+ 401   1        unsigned int now = get_Timer1_Systemtick();
+ 402   1        level_water_short = readWaterShortLevel();
+ 403   1        delay_water_short = readWaterShortDelay();
+ 404   1        while (level_water_short == water_short_ex_button && get_Timer1_Systemtick() - now < 400*60)
+ 405   1        {
+ 406   2          spraying = SPRAY_WAITING;
+ 407   2          display_when_water_is_short();
+ 408   2          water_present = FALSE;
+ 409   2          if (tButton == RF_BUTTON_STOP)
+ 410   2          {
+ 411   3            beeper_once();
+ 412   3            tButton = 0;
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 8   
+
+ 413   3            return FALSE;
+ 414   3          }
+ 415   2          else if(tButton == RF_BUTTON_START)
+ 416   2          {
+ 417   3            beeper_once();
+ 418   3            tButton = 0;
+ 419   3          }
+ 420   2        }
+ 421   1        if(water_present == FALSE  && level_water_short == water_short_ex_button) // water is still short 
+ 422   1        {
+ 423   2          spraying = SPRAY_IDLE;
+ 424   2          return FALSE;
+ 425   2        }
+ 426   1        else if(water_present == FALSE && level_water_short != water_short_ex_button) // water is not short now
+ 427   1        {
+ 428   2          now = get_Timer1_Systemtick();
+ 429   2          spraying = SPRAY_DELAYING;
+ 430   2          while(get_Timer1_Systemtick() - now < 400*delay_water_short);
+ 431   2          return TRUE;
+ 432   2        }else if (water_present) // water is never short
+ 433   1          return TRUE;
+ 434   1        else{
+ 435   2          spraying = SPRAY_IDLE;
+ 436   2          return FALSE;
+ 437   2        }
+ 438   1      }
+ 439          unsigned char start_spray(void)
+ 440          {
+ 441   1        unsigned int start_counter_backup = start_counter%100;
+ 442   1        unsigned int cnt = start_multiplier;
+ 443   1        unsigned int now = 0;
+ 444   1        if (left_mode == LEFT_TIME_EFFECTIVE_MODE)
+ 445   1        {
+ 446   2          while(start_counter>0)
+ 447   2          {
+ 448   3            // start spraying
+ 449   3            relay_effective();
+ 450   3            spraying = SPRAY_STARTING;
+ 451   3            cnt = start_multiplier;
+ 452   3            now = get_Timer1_Systemtick();
+ 453   3            while(get_Timer1_Systemtick() - now < cnt){
+ 454   4              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 1);
+ 455   4              if (tButton == RF_BUTTON_STOP
+ 456   4                || RF_BUTTON_STOP == external_button_poll_blocked())
+ 457   4              {
+ 458   5                beeper_once();
+ 459   5                relay_ineffective();
+ 460   5                stopReason = STOP_REASON_USER_ABORT;
+ 461   5                start_counter = start_counter_backup;
+ 462   5                Write_DATAFLASH_BYTE(DATA_START_ADDR+START_COUNTER_OFFSET, start_counter%100);
+ 463   5                return FALSE;
+ 464   5              }
+ 465   4              else if(tButton == RF_BUTTON_START)
+ 466   4              {
+ 467   5                beeper_once();
+ 468   5                tButton = 0;
+ 469   5              }
+ 470   4              else if(level_water_short == water_short_ex_button)
+ 471   4              {
+ 472   5                stopReason = STOP_REASON_WATER_SHORT;
+ 473   5                start_counter = start_counter_backup;
+ 474   5                Write_DATAFLASH_BYTE(DATA_START_ADDR+START_COUNTER_OFFSET, start_counter%100);
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 9   
+
+ 475   5                return FALSE;
+ 476   5              }
+ 477   4            }
+ 478   3            start_counter --;
+ 479   3          }
+ 480   2        }
+ 481   1        start_counter = start_counter_backup;
+ 482   1        Write_DATAFLASH_BYTE(DATA_START_ADDR+START_COUNTER_OFFSET, start_counter);
+ 483   1        return TRUE;
+ 484   1      }
+ 485          
+ 486          unsigned char stop_spray(void)
+ 487          {
+ 488   1        unsigned int cnt = stop_multiplier;
+ 489   1        unsigned int stop_counter_backup = stop_counter%100;
+ 490   1        unsigned int now = 0;
+ 491   1        if (right_mode == RIGHT_TIME_EFFECTIVE_MODE)
+ 492   1        {
+ 493   2          relay_ineffective();
+ 494   2          spraying = SPRAY_STOPPING;
+ 495   2          while(stop_counter > 0)
+ 496   2          {
+ 497   3            cnt = stop_multiplier;
+ 498   3            now =  get_Timer1_Systemtick();
+ 499   3            while(get_Timer1_Systemtick() - now < cnt){
+ 500   4              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 1);
+ 501   4              if (tButton == RF_BUTTON_STOP
+ 502   4                || RF_BUTTON_STOP == external_button_poll_blocked())
+ 503   4              {
+ 504   5                beeper_once();
+ 505   5                stopReason = STOP_REASON_USER_ABORT;
+ 506   5                stop_counter = stop_counter_backup;
+ 507   5                Write_DATAFLASH_BYTE(DATA_START_ADDR+STOP_COUNTER_OFFSET, stop_counter%100);
+ 508   5                return FALSE;
+ 509   5              }
+ 510   4              else if(tButton == RF_BUTTON_START)
+ 511   4              {
+ 512   5                beeper_once();
+ 513   5                tButton = 0;
+ 514   5              }
+ 515   4              else if (level_water_short == water_short_ex_button)
+ 516   4              {
+ 517   5                stopReason = STOP_REASON_WATER_SHORT;
+ 518   5                stop_counter = stop_counter_backup;
+ 519   5                Write_DATAFLASH_BYTE(DATA_START_ADDR+STOP_COUNTER_OFFSET, stop_counter%100);
+ 520   5                return FALSE;
+ 521   5              }
+ 522   4            }
+ 523   3            stop_counter --;
+ 524   3          }
+ 525   2        }
+ 526   1        stop_counter = stop_counter_backup;
+ 527   1        Write_DATAFLASH_BYTE(DATA_START_ADDR+STOP_COUNTER_OFFSET, stop_counter%100);
+ 528   1        return TRUE;
+ 529   1      }
+ 530          
+ 531          void learn_code(void)
+ 532          {
+ 533   1        unsigned int now = get_Timer1_Systemtick();
+ 534   1        unsigned int now1 = 0;
+ 535   1        while(get_Timer1_Systemtick() - now < 400*8 && tButton == 0)
+ 536   1        {
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 10  
+
+ 537   2          learning = TRUE;
+ 538   2          display_when_learning();
+ 539   2          //Timer1_Delay2Dot54ms_Unblocked(get_Timer1_Systemtick(), 1);
+ 540   2        }
+ 541   1        if(tButton == RF_BUTTON_START || tButton == RF_BUTTON_STOP)
+ 542   1        {
+ 543   2          learning = FALSE;
+ 544   2          saveToFlash();
+ 545   2          beeper_once();
+ 546   2          //writeAddressToFlash();
+ 547   2          display_when_learn_complete();
+ 548   2          now1 = get_Timer1_Systemtick();
+ 549   2          while(get_Timer1_Systemtick() - now1 < 400)
+ 550   2            Timer1_Delay2Dot54ms_Unblocked(get_Timer1_Systemtick(), 1);
+ 551   2          left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 552   2          right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 553   2          tButton = 0;
+ 554   2          return;
+ 555   2        }
+ 556   1        learning = FALSE;
+ 557   1        display_when_learn_complete();
+ 558   1        Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 800);
+ 559   1        left_mode = LEFT_TIME_EFFECTIVE_MODE;
+ 560   1        right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 561   1        tButton = 0;
+ 562   1        return;
+ 563   1      }
+ 564          
+ 565          // right business logic
+ 566          void right_business_logic() 
+ 567          {
+ 568   1          switch(right_mode)
+ 569   1          {
+ 570   2            case RIGHT_FUNCTION_1_MODE:
+ 571   2              displayBuffer[2] = 'F';
+ 572   2              displayBuffer[3] = '1';
+ 573   2              blinkFlag[2] = FALSE;
+ 574   2              blinkFlag[3] = TRUE;
+ 575   2              dotFlag[2] = dotFlag[3] = FALSE;
+ 576   2              stop_multiplier = 40; // 0.1s
+ 577   2              // wait_button_blocked
+ 578   2              if (button == RIGHT_SET_BUTTON)
+ 579   2                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 580   2              else if(button == RIGHT_UP_BUTTON)
+ 581   2                right_mode = RIGHT_FUNCTION_2_MODE;
+ 582   2              else if(button == RIGHT_DOWN_BUTTON)
+ 583   2                right_mode = RIGHT_FUNCTION_6_MODE;
+ 584   2              else if (button == LEARN_BUTTON)
+ 585   2              {
+ 586   3                right_mode = LEARN_MODE;
+ 587   3              }
+ 588   2              break;
+ 589   2            case RIGHT_FUNCTION_2_MODE:
+ 590   2              displayBuffer[2] = 'F';
+ 591   2              displayBuffer[3] = '2';
+ 592   2              blinkFlag[2] = FALSE;
+ 593   2              blinkFlag[3] = TRUE;
+ 594   2              dotFlag[2] = dotFlag[3] = FALSE;
+ 595   2              stop_multiplier = 400; // 1s
+ 596   2              // wait_button_blocked
+ 597   2              if (button == RIGHT_SET_BUTTON)
+ 598   2                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 11  
+
+ 599   2              else if(button == RIGHT_UP_BUTTON)
+ 600   2                right_mode = RIGHT_FUNCTION_3_MODE;
+ 601   2              else if(button == RIGHT_DOWN_BUTTON)
+ 602   2                right_mode = RIGHT_FUNCTION_1_MODE;
+ 603   2              else if (button == LEARN_BUTTON)
+ 604   2              {
+ 605   3                right_mode = LEARN_MODE;
+ 606   3              }
+ 607   2              break;
+ 608   2            case RIGHT_FUNCTION_3_MODE:
+ 609   2              displayBuffer[2] = 'F';
+ 610   2              displayBuffer[3] = '3';
+ 611   2              blinkFlag[2] = FALSE;
+ 612   2              blinkFlag[3] = TRUE;
+ 613   2              dotFlag[2] = dotFlag[3] = FALSE;
+ 614   2              stop_multiplier = 2400; //0.1min
+ 615   2              // wait_button_blocked
+ 616   2              if (button == RIGHT_SET_BUTTON)
+ 617   2                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 618   2              else if(button == RIGHT_UP_BUTTON)
+ 619   2                right_mode = RIGHT_FUNCTION_4_MODE;
+ 620   2              else if(button == RIGHT_DOWN_BUTTON)
+ 621   2                right_mode = RIGHT_FUNCTION_2_MODE;
+ 622   2              else if (button == LEARN_BUTTON)
+ 623   2              {
+ 624   3                right_mode = LEARN_MODE;
+ 625   3              }
+ 626   2              break;
+ 627   2            case RIGHT_FUNCTION_4_MODE:
+ 628   2              displayBuffer[2] = 'F';
+ 629   2              displayBuffer[3] = '4';
+ 630   2              blinkFlag[2] = FALSE;
+ 631   2              blinkFlag[3] = TRUE;
+ 632   2              dotFlag[2] = dotFlag[3] = FALSE;
+ 633   2              stop_multiplier = 60*400; //1min
+ 634   2              // wait_button_blocked
+ 635   2              if (button == RIGHT_SET_BUTTON)
+ 636   2                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 637   2              else if(button == RIGHT_UP_BUTTON)
+ 638   2                right_mode = RIGHT_FUNCTION_5_MODE;
+ 639   2              else if(button == RIGHT_DOWN_BUTTON)
+ 640   2                right_mode = RIGHT_FUNCTION_3_MODE;
+ 641   2              else if (button == LEARN_BUTTON)
+ 642   2              {
+ 643   3                right_mode = LEARN_MODE;
+ 644   3              }
+ 645   2              break;
+ 646   2            case RIGHT_FUNCTION_5_MODE:
+ 647   2              displayBuffer[2] = 'F';
+ 648   2              displayBuffer[3] = '5';
+ 649   2              blinkFlag[2] = FALSE;
+ 650   2              blinkFlag[3] = TRUE;
+ 651   2              dotFlag[2] = dotFlag[3] = FALSE;
+ 652   2              stop_multiplier = 6*60*400; //6 min
+ 653   2              // wait_button_blocked
+ 654   2              if (button == RIGHT_SET_BUTTON)
+ 655   2                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 656   2              else if(button == RIGHT_UP_BUTTON)
+ 657   2                right_mode = RIGHT_FUNCTION_6_MODE;
+ 658   2              else if(button == RIGHT_DOWN_BUTTON)
+ 659   2                right_mode = RIGHT_FUNCTION_4_MODE;
+ 660   2              else if (button == LEARN_BUTTON)
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 12  
+
+ 661   2              {
+ 662   3                right_mode = LEARN_MODE;
+ 663   3              }
+ 664   2              break;
+ 665   2            case RIGHT_FUNCTION_6_MODE:
+ 666   2              displayBuffer[2] = 'F';
+ 667   2              displayBuffer[3] = '6';
+ 668   2              blinkFlag[2] = FALSE;
+ 669   2              blinkFlag[3] = TRUE;
+ 670   2              dotFlag[2] = dotFlag[3] = FALSE;
+ 671   2              stop_multiplier = 60*60*400; //60 min
+ 672   2              // wait_button_blocked
+ 673   2              if (button == RIGHT_SET_BUTTON)
+ 674   2                right_mode = RIGHT_TIME_EFFECTIVE_MODE;
+ 675   2              else if(button == RIGHT_UP_BUTTON)
+ 676   2                right_mode = RIGHT_FUNCTION_1_MODE;
+ 677   2              else if(button == RIGHT_DOWN_BUTTON)
+ 678   2                right_mode = RIGHT_FUNCTION_5_MODE;
+ 679   2              else if (button == LEARN_BUTTON)
+ 680   2              {
+ 681   3                right_mode = LEARN_MODE;
+ 682   3              }
+ 683   2              break;
+ 684   2      
+ 685   2            case RIGHT_TIME_EFFECTIVE_MODE:
+ 686   2              if (spraying == SPRAY_IDLE || spraying == SPRAY_STOPPING)
+ 687   2              {
+ 688   3                if(stop_multiplier == 40
+ 689   3                  || stop_multiplier == 40*10*6
+ 690   3                  || stop_multiplier == 40*10*6*10*6)
+ 691   3                {
+ 692   4                  dotFlag[2] = TRUE;
+ 693   4                  dotFlag[3] = FALSE;
+ 694   4                }
+ 695   3                else
+ 696   3                  dotFlag[2] = dotFlag[3] = FALSE;
+ 697   3                displayBuffer[3] = '0'+stop_counter%10;
+ 698   3                displayBuffer[2] = '0'+(stop_counter/10)%10;
+ 699   3              }
+ 700   2              else if(spraying == SPRAY_DELAYING || spraying == SPRAY_WAITING)
+ 701   2              {
+ 702   3                display_when_water_is_short();
+ 703   3              }
+ 704   2              else
+ 705   2              {
+ 706   3                dotFlag[2] = dotFlag[3] = FALSE;
+ 707   3                displayBuffer[3] = 0;
+ 708   3                displayBuffer[2] = 0;
+ 709   3              }
+ 710   2              // wait_button_blocked
+ 711   2              if (button == RIGHT_SET_BUTTON)
+ 712   2                right_mode = readRightMode();
+ 713   2              else if(button == RIGHT_UP_BUTTON)
+ 714   2              {
+ 715   3                if (stop_counter == 99)
+ 716   3                  stop_counter = 0;
+ 717   3                else
+ 718   3                  stop_counter ++;
+ 719   3      
+ 720   3              }
+ 721   2              else if(button == RIGHT_DOWN_BUTTON)
+ 722   2              {
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 13  
+
+ 723   3                if (stop_counter == 0)
+ 724   3                  stop_counter = 99;
+ 725   3                else 
+ 726   3                  stop_counter --;
+ 727   3              }
+ 728   2              else if (button == LEARN_BUTTON)
+ 729   2              {
+ 730   3                right_mode = LEARN_MODE;
+ 731   3              }
+ 732   2              break;
+ 733   2            case LEARN_MODE: 
+ 734   2              if(learning)
+ 735   2                display_when_learning();
+ 736   2              else
+ 737   2                display_when_learn_complete();
+ 738   2              break;
+ 739   2            case RIGHT_FUNCTION_7_MODE:
+ 740   2              dotFlag[2] = FALSE;
+ 741   2              dotFlag[3] = TRUE;
+ 742   2              displayBuffer[2] = 0;
+ 743   2              displayBuffer[3] = '0' + level_water_short%2;
+ 744   2              blinkFlag[2] = FALSE;
+ 745   2              blinkFlag[3] = TRUE;
+ 746   2              if(button == RIGHT_UP_BUTTON || button == RIGHT_DOWN_BUTTON)
+ 747   2                level_water_short = (level_water_short == 0 ? 1 : 0);
+ 748   2              break;
+ 749   2            case RIGHT_FUNCTION_8_MODE:
+ 750   2              dotFlag[2] = TRUE;
+ 751   2              dotFlag[3] = TRUE;
+ 752   2              displayBuffer[2] = '0'+ (delay_water_short/10)%10;
+ 753   2              displayBuffer[3] = '0' + delay_water_short%10;
+ 754   2              blinkFlag[2] = blinkFlag[3] = TRUE;
+ 755   2              if(button == RIGHT_UP_BUTTON)
+ 756   2                delay_water_short ++;
+ 757   2              else if(button == RIGHT_DOWN_BUTTON)
+ 758   2                delay_water_short --;
+ 759   2      
+ 760   2              break;
+ 761   2            default:
+ 762   2              break;
+ 763   2          }
+ 764   1        return;
+ 765   1      }
+ 766          
+ 767          void business_logic() _task_ 2
+ 768          {
+ 769   1        unsigned char previous = 0;
+ 770   1        gpio_button_init_poll();
+ 771   1        input_signal_init();
+ 772   1        start_counter = readStartCounter()%100;
+ 773   1        stop_counter = readStopCounter()%100;
+ 774   1        start_multiplier = readStartMultiplier();
+ 775   1        stop_multiplier = readStopMultiplier();
+ 776   1        level_water_short = readWaterShortLevel()%2;
+ 777   1        delay_water_short = readWaterShortDelay()%100;
+ 778   1        left_business_logic();
+ 779   1        right_business_logic();
+ 780   1        while(1)
+ 781   1        {
+ 782   2          button = gpio_button_poll_blocked(previous);
+ 783   2          if (isButtonCodeValid(button))
+ 784   2          {
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 14  
+
+ 785   3            if (previous != button)  // button is not pressed consecutively
+ 786   3              beeper_once();
+ 787   3            left_business_logic();
+ 788   3            right_business_logic();
+ 789   3            previous = button;
+ 790   3            button = 0;
+ 791   3            left_business_logic();
+ 792   3            right_business_logic();
+ 793   3            writeFlash();
+ 794   3            if (right_mode == LEARN_MODE
+ 795   3              && left_mode == LEARN_MODE)
+ 796   3            {
+ 797   4              learn_code();
+ 798   4            }
+ 799   3          }
+ 800   2          //previous = button;
+ 801   2        }
+ 802   1      }
+ 803          
+ 804          // refresh led display
+ 805          void refresh_led (void) _task_ 1
+ 806          {
+ 807   1        unsigned int i = 0;
+ 808   1        // start a timer as system tick handler, time out every 1ms 
+ 809   1        // count the number of  
+ 810   1        start_counter = readStartCounter()%100;
+ 811   1        stop_counter = readStopCounter()%100;
+ 812   1        start_multiplier = readStartMultiplier();
+ 813   1        stop_multiplier = readStopMultiplier();
+ 814   1        level_water_short = readWaterShortLevel();
+ 815   1        delay_water_short = readWaterShortDelay();
+ 816   1        IIC_Init();
+ 817   1        tm1650_displayOn(&tm1650);
+ 818   1        while(1)
+ 819   1        {
+ 820   2          #if 1
+ 821   2          switch(left_mode)
+ 822   2          {
+ 823   3            case LEFT_FUNCTION_1_MODE:
+ 824   3            case LEFT_FUNCTION_2_MODE:
+ 825   3            case LEFT_FUNCTION_3_MODE:
+ 826   3            case LEFT_FUNCTION_4_MODE:
+ 827   3            case LEFT_FUNCTION_5_MODE:
+ 828   3            case LEFT_FUNCTION_6_MODE:
+ 829   3              displayBuffer[0] = 'F';
+ 830   3              if (left_mode == LEFT_FUNCTION_1_MODE)
+ 831   3              {
+ 832   4                displayBuffer[1] = '1';
+ 833   4              }
+ 834   3              else if (left_mode == LEFT_FUNCTION_2_MODE)
+ 835   3              {
+ 836   4                displayBuffer[1] = '2';
+ 837   4              }
+ 838   3              else if (left_mode == LEFT_FUNCTION_3_MODE)
+ 839   3              {
+ 840   4                displayBuffer[1] = '3';
+ 841   4              }
+ 842   3              else if (left_mode == LEFT_FUNCTION_4_MODE)
+ 843   3              {
+ 844   4                displayBuffer[1] = '4';
+ 845   4              }
+ 846   3              else if (left_mode == LEFT_FUNCTION_5_MODE)
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 15  
+
+ 847   3              {
+ 848   4                displayBuffer[1] = '5';
+ 849   4              }
+ 850   3              else if (left_mode == LEFT_FUNCTION_6_MODE)
+ 851   3              {
+ 852   4                displayBuffer[1] = '6';
+ 853   4              }
+ 854   3              blinkFlag[0] = FALSE;
+ 855   3              blinkFlag[1] = TRUE;
+ 856   3              break;
+ 857   3            case LEARN_MODE:
+ 858   3              if (learning)
+ 859   3              {
+ 860   4                display_when_learning();
+ 861   4              }
+ 862   3              else
+ 863   3              {
+ 864   4                display_when_learn_complete();
+ 865   4              }
+ 866   3              break;
+ 867   3            case LEFT_TIME_EFFECTIVE_MODE:
+ 868   3              if (spraying == SPRAY_IDLE || spraying == SPRAY_STARTING)
+ 869   3              {
+ 870   4                blinkFlag[0] = blinkFlag[1] = FALSE;
+ 871   4                displayBuffer[1] = '0'+start_counter%10;
+ 872   4                displayBuffer[0] = '0'+(start_counter/10)%10;
+ 873   4                if(start_multiplier == 40
+ 874   4                  || start_multiplier == 40*10*6
+ 875   4                  || start_multiplier == 40*10*6*10*6)
+ 876   4                {
+ 877   5                  dotFlag[0] = TRUE;
+ 878   5                  dotFlag[1] = FALSE;
+ 879   5                }
+ 880   4                else
+ 881   4                  dotFlag[0] = dotFlag[1] = FALSE;
+ 882   4              }
+ 883   3              else if(spraying == SPRAY_DELAYING || spraying == SPRAY_WAITING)
+ 884   3              {
+ 885   4                display_when_water_is_short();
+ 886   4              }
+ 887   3              else
+ 888   3              {
+ 889   4                displayBuffer[1] = 0;
+ 890   4                displayBuffer[0] = 0;
+ 891   4                dotFlag[0] = dotFlag[1] = FALSE;
+ 892   4                blinkFlag[0] = blinkFlag[1] = FALSE;
+ 893   4              }
+ 894   3              break;
+ 895   3            case LEFT_FUNCTION_7_MODE:
+ 896   3              dotFlag[0] = dotFlag[1] = FALSE;
+ 897   3              displayBuffer[0] = 'F';
+ 898   3              displayBuffer[1] = '7';
+ 899   3              blinkFlag[0] = FALSE;
+ 900   3              blinkFlag[1] = TRUE;
+ 901   3              break;
+ 902   3            case LEFT_FUNCTION_8_MODE:
+ 903   3              dotFlag[0] = dotFlag[1] = FALSE;
+ 904   3              displayBuffer[0] = 'F';
+ 905   3              displayBuffer[1] = '8';
+ 906   3              blinkFlag[0] = FALSE;
+ 907   3              blinkFlag[1] = TRUE;
+ 908   3              break;
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 16  
+
+ 909   3            default:
+ 910   3              break;
+ 911   3          }
+ 912   2          switch(right_mode)
+ 913   2          {
+ 914   3            case RIGHT_FUNCTION_1_MODE:
+ 915   3            case RIGHT_FUNCTION_2_MODE:
+ 916   3            case RIGHT_FUNCTION_3_MODE:
+ 917   3            case RIGHT_FUNCTION_4_MODE:
+ 918   3            case RIGHT_FUNCTION_5_MODE:
+ 919   3            case RIGHT_FUNCTION_6_MODE:
+ 920   3              displayBuffer[2] = 'F';
+ 921   3              if (right_mode == RIGHT_FUNCTION_1_MODE)
+ 922   3              {
+ 923   4                displayBuffer[3] = '1';
+ 924   4              }
+ 925   3              else if (right_mode == RIGHT_FUNCTION_2_MODE)
+ 926   3              {
+ 927   4                displayBuffer[3] = '2';
+ 928   4              }
+ 929   3              else if (right_mode == RIGHT_FUNCTION_3_MODE)
+ 930   3              {
+ 931   4                displayBuffer[3] = '3';
+ 932   4              }
+ 933   3              else if (right_mode == RIGHT_FUNCTION_4_MODE)
+ 934   3              {
+ 935   4                displayBuffer[3] = '4';
+ 936   4              }
+ 937   3              else if (right_mode == RIGHT_FUNCTION_5_MODE)
+ 938   3              {
+ 939   4                displayBuffer[3] = '5';
+ 940   4              }
+ 941   3              else if (right_mode == RIGHT_FUNCTION_6_MODE)
+ 942   3              {
+ 943   4                displayBuffer[3] = '6';
+ 944   4              }
+ 945   3              blinkFlag[2] = FALSE;
+ 946   3              blinkFlag[3] = TRUE;
+ 947   3              break;
+ 948   3            case LEARN_MODE:
+ 949   3              if (learning)
+ 950   3              {
+ 951   4                display_when_learning();
+ 952   4              }
+ 953   3              else
+ 954   3              {
+ 955   4                display_when_learn_complete();
+ 956   4              }
+ 957   3              break;
+ 958   3            case RIGHT_TIME_EFFECTIVE_MODE:
+ 959   3              if (spraying == SPRAY_IDLE || spraying == SPRAY_STOPPING)
+ 960   3              {
+ 961   4                displayBuffer[3] = '0'+stop_counter%10;
+ 962   4                displayBuffer[2] = '0'+(stop_counter/10)%10;
+ 963   4                blinkFlag[2] = blinkFlag[3] = FALSE;
+ 964   4                if(stop_multiplier == 40
+ 965   4                  || stop_multiplier == 40*10*6
+ 966   4                  || stop_multiplier == 40*10*6*10*6)
+ 967   4                {
+ 968   5                  dotFlag[2] = TRUE;
+ 969   5                  dotFlag[3] = FALSE;
+ 970   5                }
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 17  
+
+ 971   4                else
+ 972   4                  dotFlag[2] = dotFlag[3] = FALSE;
+ 973   4              }
+ 974   3              else if(spraying == SPRAY_DELAYING || spraying == SPRAY_WAITING)
+ 975   3              {
+ 976   4                display_when_water_is_short();
+ 977   4              }
+ 978   3              else
+ 979   3              {
+ 980   4                displayBuffer[3] = 0;
+ 981   4                displayBuffer[2] = 0;
+ 982   4                dotFlag[2] = dotFlag[3] = FALSE;
+ 983   4                blinkFlag[2] = blinkFlag[3] = FALSE;
+ 984   4              }
+ 985   3              break;
+ 986   3            case RIGHT_FUNCTION_7_MODE:
+ 987   3              dotFlag[2] = FALSE;
+ 988   3              dotFlag[3] = TRUE;
+ 989   3              blinkFlag[2] = FALSE;
+ 990   3              blinkFlag[3] = TRUE;
+ 991   3              displayBuffer[2] = 0;
+ 992   3              displayBuffer[3] = '0' + level_water_short%2;
+ 993   3              break;
+ 994   3            case RIGHT_FUNCTION_8_MODE:
+ 995   3              dotFlag[2] = FALSE;
+ 996   3              dotFlag[3] = FALSE;
+ 997   3              displayBuffer[2] = '0'+ (delay_water_short/10)%10;
+ 998   3              displayBuffer[3] = '0' + delay_water_short%10;
+ 999   3              blinkFlag[2] = blinkFlag[3] = TRUE;
+1000   3              break;
+1001   3            default:
+1002   3              break;
+1003   3          }
+1004   2          #endif
+1005   2          for (i=0; i<4; i++)
+1006   2          {
+1007   3            if(blinkFlag[i])
+1008   3            {
+1009   4              unsigned short period = 0;
+1010   4              if (blinkFlag[i] == FAST_BLINK)
+1011   4              {
+1012   5                period = 100;
+1013   5                if(get_Timer1_Systemtick()%period < period/2)
+1014   5                {
+1015   6                  tm1650_displayChar(&tm1650, i, 0);
+1016   6                }
+1017   5                else
+1018   5                {
+1019   6                  if(dotFlag[i])
+1020   6                    tm1650_displayChar_withDot(&tm1650, i, displayBuffer[i]);
+1021   6                  else
+1022   6                    tm1650_displayChar(&tm1650, i, displayBuffer[i]);
+1023   6                }
+1024   5              }
+1025   4              else if(blinkFlag[i] == SLOW_BLINK)
+1026   4              {
+1027   5                period = 400;
+1028   5                if(get_Timer1_Systemtick()%period < period/2)
+1029   5                {
+1030   6                  tm1650_displayChar(&tm1650, i, 0);
+1031   6                }
+1032   5                else
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 18  
+
+1033   5                {
+1034   6                  if(dotFlag[i])
+1035   6                    tm1650_displayChar_withDot(&tm1650, i, displayBuffer[i]);
+1036   6                  else
+1037   6                    tm1650_displayChar(&tm1650, i, displayBuffer[i]);
+1038   6                }
+1039   5              }
+1040   4              else if(blinkFlag[i] == CIRCULAR_WAITING)
+1041   4              {
+1042   5                period = 1200;
+1043   5                if(get_Timer1_Systemtick()%1200 < 200 && get_Timer1_Systemtick()%1200 > 0)
+1044   5                  tm1650_displaySegment(&tm1650, i, displayBuffer[i],1);
+1045   5                else if(get_Timer1_Systemtick()%1200 < 400 && get_Timer1_Systemtick()%1200 > 200)
+1046   5                  tm1650_displaySegment(&tm1650, i, displayBuffer[i],0x02);
+1047   5                else if(get_Timer1_Systemtick()%1200 < 600 && get_Timer1_Systemtick()%1200 > 400)
+1048   5                  tm1650_displaySegment(&tm1650, i, displayBuffer[i],0x03);
+1049   5                else if(get_Timer1_Systemtick()%1200 < 800 && get_Timer1_Systemtick()%1200 > 600)
+1050   5                  tm1650_displaySegment(&tm1650, i, displayBuffer[i],0x04);
+1051   5                else if(get_Timer1_Systemtick()%1200 < 1000 && get_Timer1_Systemtick()%1200 > 800)
+1052   5                  tm1650_displaySegment(&tm1650, i, displayBuffer[i],0x5);
+1053   5                else if(get_Timer1_Systemtick()%1200 < 1200 && get_Timer1_Systemtick()%1200 > 1000)
+1054   5                  tm1650_displaySegment(&tm1650, i, displayBuffer[i],0x06);
+1055   5              }
+1056   4              else if(blinkFlag[i] == WAIT_WATER)
+1057   4              {
+1058   5                tm1650_displayChar_withDot_underMask(&tm1650, i, displayBuffer[i], 0x8c);
+1059   5              }
+1060   4            }
+1061   3            else
+1062   3            {
+1063   4              if(dotFlag[i])
+1064   4                tm1650_displayChar_withDot(&tm1650, i, displayBuffer[i]);
+1065   4              else
+1066   4                tm1650_displayChar(&tm1650, i, displayBuffer[i]);
+1067   4            }
+1068   3          }
+1069   2          //os_switch_task();
+1070   2        }
+1071   1      }
+1072          
+1073          // start up task to bring other tasks up
+1074          int startup_task (void) _task_ 0
+1075          {
+1076   1        unsigned int start = 0, end = 0;
+1077   1        MODIFY_HIRC(HIRC_24);
+1078   1        P10_QUASI_MODE;
+1079   1        enable_Timer2_IC2();
+1080   1        start_Timer1_Systemtick();
+1081   1        input_signal_init();
+1082   1        beeper = 0;
+1083   1        os_create_task(1);
+1084   1        os_create_task(2);
+1085   1        //os_delete_task(0);
+1086   1        while(1){
+1087   2          start = get_Timer1_Systemtick();
+1088   2          while(P10 == 0);
+1089   2          end = get_Timer1_Systemtick();
+1090   2          if (end - start > 3)
+1091   2          {
+1092   3            enable_Timer2_IC2();
+1093   3          }
+1094   2          if (right_mode == RIGHT_TIME_EFFECTIVE_MODE
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 19  
+
+1095   2            && left_mode == LEFT_TIME_EFFECTIVE_MODE)
+1096   2          {
+1097   3            if (tButton == RF_BUTTON_START  // start is pressed from the remote controller
+1098   3              || RF_BUTTON_START == external_button_poll_blocked())
+1099   3            {
+1100   4              beeper_once();
+1101   4              tButton = 0;
+1102   4              while(water_is_not_short() && start_spray() && stop_spray())
+1103   4              {
+1104   5                Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 1);
+1105   5                start_counter = readStartCounter();
+1106   5                stop_counter = readStopCounter();
+1107   5                stop_multiplier = readStopMultiplier();
+1108   5                start_multiplier = readStartMultiplier();
+1109   5              }
+1110   4              spraying = SPRAY_IDLE;
+1111   4            }
+1112   3          }
+1113   2      
+1114   2          //printf("\n Hello world!");
+1115   2          //printf("\n Hello world!\r\n");
+1116   2          os_switch_task();
+1117   2        }
+1118   1      }
+1119          
+1120          void beeper_once(void) 
+1121          {
+1122   1        beeper_signal_effective(); // beeper is turned on
+1123   1        Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 50);
+1124   1        beeper_signal_ineffective();
+1125   1      }
+1126          
+1127          unsigned int readStopMultiplier()
+1128          {
+1129   1        unsigned int val = 0;
+1130   1        Read_DATAFLASH_ARRAY(DATA_START_ADDR+ STOP_MULTIPLIER_OFFSET, (unsigned char *)&val, 4);
+1131   1        return val;
+1132   1      }
+1133          
+1134          unsigned int readStartMultiplier()
+1135          {
+1136   1        unsigned int val = 0;
+1137   1        Read_DATAFLASH_ARRAY(DATA_START_ADDR+ START_MULTIPLIER_OFFSET, (unsigned char *)&val, 4);
+1138   1        return val;
+1139   1      }
+1140          unsigned char readStopCounter(void)
+1141          {
+1142   1        return Read_APROM_BYTE(DATA_START_ADDR+ STOP_COUNTER_OFFSET);
+1143   1      }
+1144          
+1145          unsigned char readStartCounter(void)
+1146          {
+1147   1        return Read_APROM_BYTE(DATA_START_ADDR + START_COUNTER_OFFSET);
+1148   1      }
+1149          unsigned char readWaterShortLevel(void)
+1150          {
+1151   1        return Read_APROM_BYTE(DATA_START_ADDR+ LEVEL_WATER_SHORT_OFFSET);
+1152   1      }
+1153          
+1154          unsigned char readWaterShortDelay(void)
+1155          {
+1156   1        return Read_APROM_BYTE(DATA_START_ADDR + DELAY_WATER_SHORT_OFFSET);
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 20  
+
+1157   1      }
+1158          
+1159          void writeFlash(void)
+1160          {
+1161   1        unsigned char mode = 0;
+1162   1        if (start_multiplier == 40)
+1163   1          mode = LEFT_FUNCTION_1_MODE;
+1164   1        else if(start_multiplier == 400)
+1165   1          mode = LEFT_FUNCTION_2_MODE;
+1166   1        else if(start_multiplier == 400*6)
+1167   1          mode = LEFT_FUNCTION_3_MODE;
+1168   1        else if(start_multiplier == 400*6*10)
+1169   1          mode = LEFT_FUNCTION_4_MODE;
+1170   1        else if(start_multiplier == 400*6*10*6)
+1171   1          mode = LEFT_FUNCTION_5_MODE;
+1172   1        else if(start_multiplier == 400*6*10*6*10)
+1173   1          mode = LEFT_FUNCTION_6_MODE;
+1174   1        else {
+1175   2          start_multiplier = 40;
+1176   2          mode = LEFT_FUNCTION_1_MODE;
+1177   2        }
+1178   1        Write_DATAFLASH_BYTE(DATA_START_ADDR + LEFT_MODE_OFFSET, mode);
+1179   1        Write_DATAFLASH_ARRAY(DATA_START_ADDR + START_MULTIPLIER_OFFSET, (unsigned char *)&start_multiplier, 4);
+1180   1        if (stop_multiplier == 40)
+1181   1          mode = RIGHT_FUNCTION_1_MODE;
+1182   1        else if(stop_multiplier == 400)
+1183   1          mode = RIGHT_FUNCTION_2_MODE;
+1184   1        else if(stop_multiplier == 400*6)
+1185   1          mode = RIGHT_FUNCTION_3_MODE;
+1186   1        else if(stop_multiplier == 400*6*10)
+1187   1          mode = RIGHT_FUNCTION_4_MODE;
+1188   1        else if(stop_multiplier == 400*6*10*6)
+1189   1          mode = RIGHT_FUNCTION_5_MODE;
+1190   1        else if(stop_multiplier == 400*6*10*6*10)
+1191   1          mode = RIGHT_FUNCTION_6_MODE;
+1192   1        else {
+1193   2          stop_multiplier = 40;
+1194   2          mode = RIGHT_FUNCTION_1_MODE;
+1195   2        }
+1196   1        Write_DATAFLASH_BYTE(DATA_START_ADDR + RIGHT_MODE_OFFSET, mode);
+1197   1        Write_DATAFLASH_ARRAY(DATA_START_ADDR + STOP_MULTIPLIER_OFFSET, (unsigned char *)&stop_multiplier, 4);
+1198   1        Write_DATAFLASH_BYTE(DATA_START_ADDR + START_COUNTER_OFFSET, start_counter%100);
+1199   1        Write_DATAFLASH_BYTE(DATA_START_ADDR + STOP_COUNTER_OFFSET, stop_counter%100);
+1200   1        Write_DATAFLASH_BYTE(DATA_START_ADDR + LEVEL_WATER_SHORT_OFFSET, level_water_short%2);
+1201   1        Write_DATAFLASH_BYTE(DATA_START_ADDR + DELAY_WATER_SHORT_OFFSET, delay_water_short%100);
+1202   1        //flushFlash();
+1203   1      }
+1204          
+1205          unsigned char readLeftMode(void)
+1206          {
+1207   1        unsigned char mode = Read_APROM_BYTE(DATA_START_ADDR + LEFT_MODE_OFFSET);
+1208   1        if ((mode < LEFT_FUNCTION_1_MODE || mode > LEFT_TIME_EFFECTIVE_MODE) && mode != LEARN_MODE)
+1209   1          return LEFT_FUNCTION_1_MODE;
+1210   1        else
+1211   1          return mode;
+1212   1      }
+1213          
+1214          unsigned char readRightMode(void)
+1215          {
+1216   1        unsigned char mode = Read_APROM_BYTE(DATA_START_ADDR + RIGHT_MODE_OFFSET);
+1217   1        if ((mode < RIGHT_FUNCTION_1_MODE || mode > RIGHT_TIME_EFFECTIVE_MODE) && mode != LEARN_MODE)
+1218   1          return RIGHT_FUNCTION_1_MODE;
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 21  
+
+1219   1        else
+1220   1          return mode;
+1221   1      }
+1222          
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 22  
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+beeper_once. . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+uint16_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+P1M1 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B3H  1
+P0 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0080H  1
+P1M2 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B4H  1
+P1 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0090H  1
+P2 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A0H  1
+P3 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B0H  1
+_gpio_button_poll_blocked. . . . . . .  EXTERN   CODE   PROC     -----  -----
+EA . . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      00AFH  1
+PWMCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D8H  1
+refresh_led. . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  period . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+  i. . . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+_tm1650_displayChar. . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+IE . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A8H  1
+blinkFlag. . . . . . . . . . . . . . .  PUBLIC   XDATA  ARRAY    0000H  4
+relay_ineffective. . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+_Write_DATAFLASH_BYTE. . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+size_t . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+learn_code . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  now. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  now1 . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+TA . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C7H  1
+readStartCounter . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+start_counter. . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    0004H  2
+IP . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B8H  1
+writeFlash . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  mode . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0000H  1
+button . . . . . . . . . . . . . . . .  PUBLIC   XDATA  U_CHAR   0006H  1
+enable_Timer2_IC2. . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+TM1650TypeDef. . . . . . . . . . . . .  * TAG *  -----  STRUCT   -----  26
+  iPosition. . . . . . . . . . . . . .  MEMBER   -----  PTR      0000H  3
+  iActive. . . . . . . . . . . . . . .  MEMBER   -----  CHAR     0003H  1
+  iNumDigits . . . . . . . . . . . . .  MEMBER   -----  U_INT    0004H  2
+  iBrightness. . . . . . . . . . . . .  MEMBER   -----  U_INT    0006H  2
+  iString. . . . . . . . . . . . . . .  MEMBER   -----  ARRAY    0008H  9
+  iBuffer. . . . . . . . . . . . . . .  MEMBER   -----  ARRAY    0011H  5
+  iCtrl. . . . . . . . . . . . . . . .  MEMBER   -----  ARRAY    0016H  4
+buttonState. . . . . . . . . . . . . .  * TAG *  -----  STRUCT   -----  7
+  cod. . . . . . . . . . . . . . . . .  MEMBER   -----  U_CHAR   0000H  1
+  dur. . . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0001H  2
+  start. . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0003H  2
+  end. . . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0005H  2
+UINT32 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+readRightMode. . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  mode . . . . . . . . . . . . . . . .  * REG *  DATA   U_CHAR   0007H  1
+right_mode . . . . . . . . . . . . . .  PUBLIC   XDATA  U_CHAR   0007H  1
+UINT16 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+water_is_not_short . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  water_present. . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  now. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+readWaterShortDelay. . . . . . . . . .  PUBLIC   CODE   PROC     0008H  -----
+readStopCounter. . . . . . . . . . . .  PUBLIC   CODE   PROC     000FH  -----
+delay_water_short. . . . . . . . . . .  PUBLIC   XDATA  U_INT    0008H  2
+input_signal_init. . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+_Timer1_Delay2Dot54ms_Unblocked. . . .  EXTERN   CODE   PROC     -----  -----
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 23  
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+startup_task . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  start. . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  end. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+stop_counter . . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    000AH  2
+tm1650 . . . . . . . . . . . . . . . .  PUBLIC   XDATA  STRUCT   000CH  26
+P10. . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      0090H  1
+BIT_TMP. . . . . . . . . . . . . . . .  EXTERN   DATA   BIT      -----  1
+readLeftMode . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  mode . . . . . . . . . . . . . . . .  * REG *  DATA   U_CHAR   0007H  1
+SCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0098H  1
+readWaterShortLevel. . . . . . . . . .  PUBLIC   CODE   PROC     0008H  -----
+left_mode. . . . . . . . . . . . . . .  PUBLIC   XDATA  U_CHAR   0026H  1
+stopReason . . . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    0027H  2
+TCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0088H  1
+level_water_short. . . . . . . . . . .  PUBLIC   XDATA  U_INT    0029H  2
+relay_effective. . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+dotBlinkFlag . . . . . . . . . . . . .  PUBLIC   XDATA  ARRAY    002BH  4
+external_button_poll_blocked . . . . .  EXTERN   CODE   PROC     -----  -----
+SFRS . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0091H  1
+prevButton . . . . . . . . . . . . . .  PUBLIC   XDATA  STRUCT   002FH  7
+start_spray. . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  start_counter_backup . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  cnt. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+  now. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0004H  2
+display_when_learn_complete. . . . . .  PUBLIC   CODE   PROC     0000H  -----
+dotFlag. . . . . . . . . . . . . . . .  PUBLIC   XDATA  ARRAY    0036H  4
+SCON_1 . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00F8H  1
+display_when_learning. . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+_tm1650_displayOn. . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+beeper_signal_ineffective. . . . . . .  EXTERN   CODE   PROC     -----  -----
+IIC_Init . . . . . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+_Read_DATAFLASH_ARRAY. . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+_isButtonCodeValid . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+uint8_t. . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+_os_create_task. . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+_MODIFY_HIRC . . . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+_tm1650_displayChar_withDot. . . . . .  EXTERN   CODE   PROC     -----  -----
+learning . . . . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    003AH  2
+displayBuffer. . . . . . . . . . . . .  PUBLIC   XDATA  ARRAY    003CH  4
+ADCCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00E8H  1
+stop_spray . . . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  cnt. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  stop_counter_backup. . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+  now. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0004H  2
+I2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C0H  1
+_Write_DATAFLASH_ARRAY . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+readStartMultiplier. . . . . . . . . .  PUBLIC   CODE   PROC     000FH  -----
+  val. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+start_Timer1_Systemtick. . . . . . . .  EXTERN   CODE   PROC     -----  -----
+BIT. . . . . . . . . . . . . . . . . .  TYPEDEF  -----  BIT      -----  1
+start_multiplier . . . . . . . . . . .  PUBLIC   XDATA  U_INT    0040H  2
+business_logic . . . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  previous . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0000H  1
+_tm1650_displaySegment . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+gpio_button_init_poll. . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+right_business_logic . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+_tm1650_displayChar_withDot_underMask.  EXTERN   CODE   PROC     -----  -----
+C51 COMPILER V9.60.7.0   MAIN                                                              09/27/2024 10:00:23 PAGE 24  
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+g_button . . . . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    0042H  2
+saveToFlash. . . . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+T2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C8H  1
+display_when_water_is_short. . . . . .  PUBLIC   CODE   PROC     0000H  -----
+_Timer1_Delay2Dot54ms_blocked. . . . .  EXTERN   CODE   PROC     -----  -----
+wchar_t. . . . . . . . . . . . . . . .  TYPEDEF  -----  CHAR     -----  1
+get_Timer1_Systemtick. . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+os_switch_task . . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+left_business_logic. . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+beeper_signal_effective. . . . . . . .  EXTERN   CODE   PROC     -----  -----
+spraying . . . . . . . . . . . . . . .  PUBLIC   XDATA  U_INT    0044H  2
+tButton. . . . . . . . . . . . . . . .  EXTERN   XDATA  U_INT    -----  2
+_Read_APROM_BYTE . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+readStopMultiplier . . . . . . . . . .  PUBLIC   CODE   PROC     0008H  -----
+  val. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+beeper . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      0083H  1
+stop_multiplier. . . . . . . . . . . .  PUBLIC   XDATA  U_INT    0046H  2
+water_short_ex_button. . . . . . . . .  ABSBIT   -----  BIT      00B0H  1
+UINT8. . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+PSW. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D0H  1
+uint32_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   6422    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     72      34
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

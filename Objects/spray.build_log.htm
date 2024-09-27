@@ -1,0 +1,79 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: ¦ÌVision V5.38.0.0
+Copyright (C) 2022 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: xu 1487503814@qq.com, cls, LIC=EXTQ1-CLDVH-YIE5X-H1CUA-NE0BW-VZH2X
+ 
+Tool Versions:
+Toolchain:       PK51 Prof. Developers Kit  Version: 9.60.7.0
+Toolchain Path:  D:\tool chain\keil c51 v6\C51\BIN
+C Compiler:      C51.exe V9.60.7.0
+Assembler:       A51.exe V8.2.7.0
+Linker/Locator:  BL51.exe V6.22.4.0
+Library Manager: LIB51.exe V4.30.1.0
+Hex Converter:   OH51.exe V2.7.0.0
+CPU DLL:         S8051.DLL V3.125.1.0
+Dialog DLL:      DP51.DLL V2.69.0.0
+Target DLL:      Nuvoton_8051_Keil_uVision_Driver.dll V3.09
+Dialog DLL:      TP51.DLL V2.60.1.0
+ 
+<h2>Project:</h2>
+C:\Users\14875\Desktop\ÅçÁÜÆ÷\spray - v9\spray.uvproj
+Project File Date:  09/26/2024
+
+<h2>Output:</h2>
+Rebuild target 'Target 1'
+assembling MS51_STARTUP.A51...
+assembling Conf_tny.A51...
+compiling main.c...
+compiling hardware.c...
+compiling I2C_GPIO.c...
+compiling button.c...
+compiling systick.c...
+compiling output.c...
+compiling tm11650.c...
+compiling sys.c...
+compiling eeprom.c...
+compiling common.c...
+linking...
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?READSTARTMULTIPLIER?MAIN
+    CALLER1: ?PR?BUSINESS_LOGIC?MAIN
+    CALLER2: ?PR?REFRESH_LED?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?_READ_DATAFLASH_ARRAY?EEPROM
+    CALLER1: ?PR?BUSINESS_LOGIC?MAIN
+    CALLER2: ?PR?REFRESH_LED?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?READSTOPMULTIPLIER?MAIN
+    CALLER1: ?PR?BUSINESS_LOGIC?MAIN
+    CALLER2: ?PR?REFRESH_LED?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?_TIMER1_DELAY2DOT54MS_BLOCKED?SYSTICK
+    CALLER1: ?PR?BUSINESS_LOGIC?MAIN
+    CALLER2: ?PR?STARTUP_TASK?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?_WRITE_DATAFLASH_BYTE?EEPROM
+    CALLER1: ?PR?BUSINESS_LOGIC?MAIN
+    CALLER2: ?PR?STARTUP_TASK?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?READSTOPMULTIPLIER?MAIN
+    CALLER1: ?PR?REFRESH_LED?MAIN
+    CALLER2: ?PR?STARTUP_TASK?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?_READ_DATAFLASH_ARRAY?EEPROM
+    CALLER1: ?PR?REFRESH_LED?MAIN
+    CALLER2: ?PR?STARTUP_TASK?MAIN
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?READSTARTMULTIPLIER?MAIN
+    CALLER1: ?PR?REFRESH_LED?MAIN
+    CALLER2: ?PR?STARTUP_TASK?MAIN
+Program Size: data=30.2 xdata=903 code=13598
+".\Objects\spray" - 0 Error(s), 8 Warning(s).
+Build Time Elapsed:  00:00:01
+</pre>
+</body>
+</html>

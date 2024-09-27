@@ -1,0 +1,305 @@
+C51 COMPILER V9.60.7.0   BUTTON                                                            09/27/2024 10:00:24 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE BUTTON
+OBJECT MODULE PLACED IN .\Objects\button.obj
+COMPILER INVOKED BY: D:\tool chain\keil c51 v6\C51\BIN\C51.EXE Application\button.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDI
+                    -R(.\Device\Include;.\StdDriver\inc;.\RTX Tiny2\inc;.\TM1650;.\Application) DEFINE(FOSC_240000) DEBUG OBJECTEXTEND SYMBOL
+                    -S PRINT(.\Listings\button.lst) TABS(2) OBJECT(.\Objects\button.obj)
+
+line level    source
+
+   1          #include "button.h"
+   2          #include "timer.h"
+   3          #include "systick.h"
+   4          #include <RTX51TNY.h>
+   5          
+   6          
+   7          extern unsigned int button;
+   8          
+   9          #if 0
+              void PinInterrupt_ISR (void) interrupt 7
+              {
+              _push_(SFRS);
+                
+                   if (PIF&=SET_BIT2)
+                   {
+                     P02 ^= 1;
+                   }
+                   if (PIF&=SET_BIT2)
+                   {
+                     P03 ^= 1;
+                   }
+              
+              _pop_(SFRS);
+              }
+              /******************************************************************************
+              The main C function.  Program execution starts
+              here after stack initialization.
+              ******************************************************************************/
+              void gpio_button_init_interrupt(void) 
+              {
+                  RIGHT_UP_BUTTON_PIN_INIT;
+                  RIGHT_DOWN_BUTTON_PIN_INIT;
+                  RIGHT_SET_BUTTON_PIN_INIT;
+                  LEFT_UP_BUTTON_PIN_INIT;
+                  LEFT_DOWN_BUTTON_PIN_INIT;
+                  LEFT_SET_BUTTON_PIN_INIT;
+                  LEARN_BUTTON_PIN_INIT;
+              /*----------------------------------------------------*/
+              /*  P1.3 set as highlevel trig pin interrupt function */
+              /*  otherwise, MCU into idle mode.                    */
+              /*----------------------------------------------------*/
+              
+                  ENABLE_INT_PORT0;
+                  ENABLE_BIT0_FALLINGEDGE_TRIG; 
+                  ENABLE_BIT5_FALLINGEDGE_TRIG;
+                  ENABLE_BIT6_FALLINGEDGE_TRIG;
+                  ENABLE_BIT1_FALLINGEDGE_TRIG;
+                  ENABLE_INT_PORT1;
+                  ENABLE_BIT1_FALLINGEDGE_TRIG;
+                  ENABLE_BIT5_FALLINGEDGE_TRIG;
+                  ENABLE_BIT4_FALLINGEDGE_TRIG;
+                  set_EIE_EPI;                            // Enable pin interrupt
+                  ENABLE_GLOBAL_INTERRUPT;                // global enable bit
+C51 COMPILER V9.60.7.0   BUTTON                                                            09/27/2024 10:00:24 PAGE 2   
+
+              }
+              
+              #endif
+  57          
+  58          void gpio_button_init_poll (void) 
+  59          {
+  60   1          RIGHT_UP_BUTTON_PIN_INIT;
+  61   1          RIGHT_DOWN_BUTTON_PIN_INIT;
+  62   1          RIGHT_SET_BUTTON_PIN_INIT;
+  63   1          LEFT_UP_BUTTON_PIN_INIT;
+  64   1          LEFT_DOWN_BUTTON_PIN_INIT;
+  65   1          LEFT_SET_BUTTON_PIN_INIT;
+  66   1          LEARN_BUTTON_PIN_INIT;
+  67   1      }
+  68          
+  69          #if 0 
+              static unsigned char keys_pressed[NUM_BUTTONS] = {0};
+              
+              unsigned char gpio_button_poll_unblocked(void)
+              {
+                if (right_up_button == 0)
+                {  
+                  if (keys_pressed[RIGHT_UP_BUTTON_ID]++ > 4)
+                  {
+                    keys_pressed[RIGHT_UP_BUTTON_ID] = 0;
+                    return RIGHT_UP_BUTTON;
+                  }
+                }
+                else
+                  keys_pressed[RIGHT_UP_BUTTON_ID] = 0;
+                if (right_down_button == 0)
+                {  
+                  if (keys_pressed[RIGHT_DOWN_BUTTON_ID]++ > 4)
+                  {
+                    keys_pressed[RIGHT_DOWN_BUTTON_ID] = 0;
+                    return RIGHT_DOWN_BUTTON;
+                  }
+                }
+                else
+                  keys_pressed[RIGHT_DOWN_BUTTON_ID] = 0;
+                if (right_set_button == 0)
+                {  
+                  if (keys_pressed[RIGHT_SET_BUTTON_ID]++ > 4)
+                  {
+                    keys_pressed[RIGHT_SET_BUTTON_ID] = 0;
+                    return RIGHT_SET_BUTTON;
+                  }
+                }
+                else
+                  keys_pressed[RIGHT_SET_BUTTON_ID] = 0;
+                if (left_up_button == 0)
+                {  
+                  if (keys_pressed[LEFT_UP_BUTTON_ID]++ > 4)
+                  {
+                    keys_pressed[LEFT_UP_BUTTON_ID] = 0;
+                    return LEFT_UP_BUTTON;
+                  }
+                }
+                else
+                  keys_pressed[LEFT_UP_BUTTON_ID] = 0;
+                if (left_down_button == 0)
+                {  
+C51 COMPILER V9.60.7.0   BUTTON                                                            09/27/2024 10:00:24 PAGE 3   
+
+                  if (keys_pressed[LEFT_DOWN_BUTTON_ID]++ > 4)
+                  {
+                    keys_pressed[LEFT_DOWN_BUTTON_ID] = 0;
+                    return LEFT_DOWN_BUTTON;
+                  }
+                }
+                else
+                  keys_pressed[LEFT_DOWN_BUTTON_ID] = 0;
+                if (left_set_button == 0)
+                {  
+                  if (keys_pressed[LEFT_SET_BUTTON_ID]++ > 4)
+                  {
+                    keys_pressed[LEFT_SET_BUTTON_ID] = 0;
+                    return LEFT_SET_BUTTON;
+                  }
+                }
+                else
+                  keys_pressed[LEFT_SET_BUTTON_ID] = 0;
+                return 0;
+              }
+              #endif
+ 137          unsigned char gpio_button_poll_blocked(unsigned char prev)
+ 138          {
+ 139   1          unsigned int now = 0;
+ 140   1          unsigned int duration = 0;
+ 141   1          if (right_up_button == 0)
+ 142   1          {
+ 143   2            if(prev == RIGHT_UP_BUTTON)
+ 144   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 2);
+ 145   2            else
+ 146   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 10);
+ 147   2            if (right_up_button == 0)
+ 148   2              return RIGHT_UP_BUTTON;
+ 149   2          }
+ 150   1          else if(right_down_button == 0)
+ 151   1          {
+ 152   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 10);
+ 153   2              if (right_down_button == 0)
+ 154   2                return RIGHT_DOWN_BUTTON;
+ 155   2          }
+ 156   1          else if(right_set_button == 0)
+ 157   1          { 
+ 158   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 10);
+ 159   2              if (right_set_button == 0)
+ 160   2                return RIGHT_SET_BUTTON;
+ 161   2          }
+ 162   1          else if(left_up_button == 0)
+ 163   1          {
+ 164   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 10);
+ 165   2              if (left_up_button == 0)
+ 166   2                return LEFT_UP_BUTTON;
+ 167   2          }
+ 168   1          else if(left_down_button == 0)
+ 169   1          {
+ 170   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 10);
+ 171   2              if (left_down_button == 0)
+ 172   2                return LEFT_DOWN_BUTTON;
+ 173   2          }
+ 174   1          else if(left_set_button == 0)
+ 175   1          {
+ 176   2            now = get_Timer1_Systemtick();
+ 177   2            while(left_set_button == 0) {
+C51 COMPILER V9.60.7.0   BUTTON                                                            09/27/2024 10:00:24 PAGE 4   
+
+ 178   3              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 1);
+ 179   3            }
+ 180   2            duration = get_Timer1_Systemtick() - now;
+ 181   2            if (duration > 200)
+ 182   2              return LEFT_SET_LONG_BUTTON;
+ 183   2            else if(duration > 10)
+ 184   2              return LEFT_SET_BUTTON;
+ 185   2      
+ 186   2          }
+ 187   1          else if(learn_button == 0)
+ 188   1          {
+ 189   2              Timer1_Delay2Dot54ms_blocked(get_Timer1_Systemtick(), 10);
+ 190   2              if (learn_button == 0)
+ 191   2                return LEARN_BUTTON;
+ 192   2          }
+ 193   1          return 0;
+ 194   1      }
+ 195          
+ 196          #if 0
+              unsigned char gpio_button_id(unsigned char cod)
+              {
+                switch(cod)
+                {
+                  case RIGHT_UP_BUTTON: return RIGHT_UP_BUTTON_ID;
+                  case RIGHT_DOWN_BUTTON: return RIGHT_DOWN_BUTTON_ID;
+                  case RIGHT_SET_BUTTON: return RIGHT_SET_BUTTON_ID;
+                  case LEFT_UP_BUTTON: return LEFT_UP_BUTTON_ID;
+                  case LEFT_DOWN_BUTTON: return LEFT_DOWN_BUTTON_ID;
+                  case LEFT_SET_BUTTON: return LEFT_SET_BUTTON_ID;
+                  case LEARN_BUTTON: return LEARN_BUTTON_ID;
+                  default : return 0xff;
+                }
+              }
+              
+              unsigned char wait_button_blocked(void)
+              {
+                while(SIG_EVENT != os_wait(K_SIG, 500, 0));
+                return 1;
+              }
+              #endif
+C51 COMPILER V9.60.7.0   BUTTON                                                            09/27/2024 10:00:24 PAGE 5   
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+P0M1 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B1H  1
+uint16_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+P1M1 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B3H  1
+P0M2 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B2H  1
+P0 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0080H  1
+P1M2 . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B4H  1
+P1 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0090H  1
+P2 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A0H  1
+P3 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B0H  1
+_gpio_button_poll_blocked. . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  prev . . . . . . . . . . . . . . . .  * REG *  DATA   U_CHAR   0007H  1
+  now. . . . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0000H  2
+  duration . . . . . . . . . . . . . .  AUTO     XDATA  U_INT    0002H  2
+EA . . . . . . . . . . . . . . . . . .  ABSBIT   -----  BIT      00AFH  1
+PWMCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D8H  1
+IE . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A8H  1
+size_t . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+TA . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C7H  1
+learn_button . . . . . . . . . . . . .  ABSBIT   -----  BIT      0094H  1
+IP . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B8H  1
+buttonState. . . . . . . . . . . . . .  * TAG *  -----  STRUCT   -----  7
+  cod. . . . . . . . . . . . . . . . .  MEMBER   -----  U_CHAR   0000H  1
+  dur. . . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0001H  2
+  start. . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0003H  2
+  end. . . . . . . . . . . . . . . . .  MEMBER   -----  U_INT    0005H  2
+UINT32 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+UINT16 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+BIT_TMP. . . . . . . . . . . . . . . .  EXTERN   DATA   BIT      -----  1
+SCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0098H  1
+TCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0088H  1
+right_down_button. . . . . . . . . . .  ABSBIT   -----  BIT      0082H  1
+SFRS . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0091H  1
+SCON_1 . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00F8H  1
+left_down_button . . . . . . . . . . .  ABSBIT   -----  BIT      0086H  1
+uint8_t. . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+right_set_button . . . . . . . . . . .  ABSBIT   -----  BIT      0091H  1
+ADCCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00E8H  1
+left_set_button. . . . . . . . . . . .  ABSBIT   -----  BIT      0095H  1
+I2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C0H  1
+BIT. . . . . . . . . . . . . . . . . .  TYPEDEF  -----  BIT      -----  1
+gpio_button_init_poll. . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+T2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C8H  1
+_Timer1_Delay2Dot54ms_blocked. . . . .  EXTERN   CODE   PROC     -----  -----
+right_up_button. . . . . . . . . . . .  ABSBIT   -----  BIT      0081H  1
+get_Timer1_Systemtick. . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+left_up_button . . . . . . . . . . . .  ABSBIT   -----  BIT      0085H  1
+UINT8. . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+PSW. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D0H  1
+uint32_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    575    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----       4
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+C51 COMPILER V9.60.7.0   BUTTON                                                            09/27/2024 10:00:24 PAGE 6   
+
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

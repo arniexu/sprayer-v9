@@ -1,0 +1,16 @@
+".\Objects\MS51_STARTUP.obj",
+".\Objects\Conf_tny.obj",
+".\Objects\main.obj",
+".\Objects\hardware.obj",
+".\Objects\I2C_GPIO.obj",
+".\Objects\button.obj",
+".\Objects\systick.obj",
+".\Objects\output.obj",
+".\Objects\tm11650.obj",
+".\Objects\sys.obj",
+".\Objects\eeprom.obj",
+".\Objects\common.obj" 
+TO ".\Objects\spray" Rtx51Tiny 
+PRINT(".\Listings\spray.m51") RAMSIZE(256) 
+CODE( 0X0000-0X3FFF )
+XDATA( 0X0000-0X03FF )

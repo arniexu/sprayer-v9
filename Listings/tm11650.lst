@@ -1,0 +1,207 @@
+C51 COMPILER V9.60.7.0   TM11650                                                           09/27/2024 10:00:24 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE TM11650
+OBJECT MODULE PLACED IN .\Objects\tm11650.obj
+COMPILER INVOKED BY: D:\tool chain\keil c51 v6\C51\BIN\C51.EXE ..\spray\TM1650\tm11650.c LARGE OPTIMIZE(8,SPEED) BROWSE 
+                    -INCDIR(.\Device\Include;.\StdDriver\inc;.\RTX Tiny2\inc;.\TM1650;.\Application) DEFINE(FOSC_240000) DEBUG OBJECTEXTEND S
+                    -YMBOLS PRINT(.\Listings\tm11650.lst) TABS(2) OBJECT(.\Objects\tm11650.obj)
+
+line level    source
+
+   1          #include "TM1650.h"
+   2          #include "I2C_GPIO.h"
+   3          #include "timer.h"
+   4          static code uint8_t TM1650_CDigits[128] = {
+   5          //0x00  0x01  0x02  0x03  0x04  0x05  0x06  0x07  0x08  0x09  0x0A  0x0B  0x0C  0x0D  0x0E  0x0F
+   6            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x00
+   7            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x10
+   8            0x00, 0x82, 0x21, 0x00, 0x00, 0x00, 0x00, 0x02, 0x39, 0x0F, 0x00, 0x00, 0x00, 0x40, 0x80, 0x00, // 0x20
+   9            0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7f, 0x6f, 0x00, 0x00, 0x00, 0x48, 0x00, 0x53, // 0x30
+  10            0x00, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71, 0x6F, 0x76, 0x06, 0x1E, 0x00, 0x38, 0x00, 0x54, 0x3F, // 0x40
+  11            0x73, 0x67, 0x50, 0x6D, 0x78, 0x3E, 0x00, 0x00, 0x00, 0x6E, 0x00, 0x39, 0x00, 0x0F, 0x00, 0x08, // 0x50 
+  12            0x63, 0x5F, 0x7C, 0x58, 0x5E, 0x7B, 0x71, 0x6F, 0x74, 0x02, 0x1E, 0x00, 0x06, 0x00, 0x54, 0x5C, // 0x60
+  13            0x73, 0x67, 0x50, 0x6D, 0x78, 0x1C, 0x00, 0x00, 0x00, 0x6E, 0x00, 0x39, 0x30, 0x0F, 0x00, 0x00  // 0x70
+  14          };
+  15          static code unsigned char buttonCodes[] = {
+  16            0x44, 0x45, 0x46, 0x47,
+  17            0x4c, 0x4d, 0x4e, 0x4f,
+  18            0x54, 0x55, 0x56, 0x57,
+  19            0x5c, 0x5d, 0x5e, 0x5f,
+  20            0x64, 0x65, 0x66, 0x67,
+  21            0x6c, 0x6d, 0x6e, 0x6f,
+  22            0x74, 0x75, 0x76, 0x77,
+  23            0xa4};
+  24          
+  25          /** Turns the display on
+  26           */
+  27          void tm1650_displayOn(struct TM1650TypeDef *tm) {
+  28   1        tm = NULL;
+  29   1        I2C_Write_Byte(TM1650_DCTRL_BASE, 1);
+  30   1      }
+  31          
+  32          #if 0
+              /** Turns the display off
+               */
+              void tm1650_displayOff(struct TM1650TypeDef *tm) {
+                tm = NULL;
+                I2C_Write_Byte(TM1650_DCTRL_BASE, 0);
+              }
+              #endif
+  40          
+  41          #if 0
+              /** Display string on the display
+               * aString = character array to be displayed
+               *
+               * Internal buffer is updated as well
+               * Only first N positions of the string are displayed if
+               *  the string is longer than the number of digits
+               */
+              void tm1650_displayString(struct TM1650TypeDef *tm, char *aString) {
+                aString = NULL;
+                tm = NULL;
+                return;
+              }
+C51 COMPILER V9.60.7.0   TM11650                                                           09/27/2024 10:00:24 PAGE 2   
+
+              
+              #endif
+  56          
+  57          
+  58          /** Display character on the display
+  59           * aPos = the position of the display character
+  60           * aData = character to be displayed
+  61           * aDot = display the dot if true, clear if false
+  62           *
+  63           * Display of the character at the specified position of the display.
+  64           */
+  65          void tm1650_displayChar(struct TM1650TypeDef *tm, uint8_t aPos,  uint8_t c)
+  66          {
+  67   1        tm = NULL;
+  68   1        tm->iBuffer[aPos] = c;
+  69   1        I2C_Write_Byte(TM1650_DISPLAY_BASE + aPos*2, TM1650_CDigits[c]);
+  70   1      }
+  71          
+  72          void tm1650_displayChar_withDot(struct TM1650TypeDef *tm, uint8_t aPos,  uint8_t c)
+  73          {
+  74   1        tm = NULL;
+  75   1        tm->iBuffer[aPos] = c;
+  76   1        I2C_Write_Byte(TM1650_DISPLAY_BASE + aPos*2, TM1650_CDigits[c]|TM1650_CDigits['.']);
+  77   1      }
+  78          
+  79          void tm1650_displayChar_withDot_underMask(struct TM1650TypeDef *tm, uint8_t aPos,  uint8_t c, uint8_t mask
+             -)
+  80          {
+  81   1        tm = NULL;
+  82   1        tm->iBuffer[aPos] = c;
+  83   1        I2C_Write_Byte(TM1650_DISPLAY_BASE + aPos*2, (TM1650_CDigits[c]|TM1650_CDigits['.'])&mask);
+  84   1      }
+  85          
+  86          void tm1650_displaySegment(struct TM1650TypeDef *tm, uint8_t aPos,  uint8_t c, unsigned char i)
+  87          {
+  88   1        tm = NULL;
+  89   1        tm->iBuffer[aPos] = c;
+  90   1        I2C_Write_Byte(TM1650_DISPLAY_BASE + aPos*2, TM1650_CDigits[c] & (0x01 << (i - 1)));
+  91   1        //HAL_I2C_Transmit(&hi2c1, TM1650_DISPLAY_BASE + aPos*2, TM1650_CDigits, 1 , HAL_MAX_DELAY);
+  92   1      }
+  93          
+  94          
+  95          #if  0
+              /** Getting the buttons pressed
+               *
+               * returns: the code of the pressed buttons, for details refer to the documentation on the chip TM1650
+               */
+              uint8_t tm1650_getButtons(struct TM1650TypeDef *tm) {
+                tm = NULL;
+                return I2C_Read_Byte(TM1650_DCTRL_BASE+1);
+              }
+              
+              #endif
+ 106          
+ 107          unsigned char isButtonCodeValid(UINT8 c)
+ 108          {
+ 109   1        unsigned char i = 0;
+ 110   1        for (i = 0; i<29; i++)
+ 111   1          if (c == buttonCodes[i])
+ 112   1            return 1;
+ 113   1        return 0;
+ 114   1      }
+C51 COMPILER V9.60.7.0   TM11650                                                           09/27/2024 10:00:24 PAGE 3   
+
+NAME                                    CLASS   MSPACE  TYPE    OFFSET  SIZE
+====                                    =====   ======  ====    ======  ====
+
+
+uint16_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+P0 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0080H  1
+P1 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0090H  1
+P2 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A0H  1
+P3 . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B0H  1
+PWMCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D8H  1
+_tm1650_displayChar. . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  tm . . . . . . . . . . . . . . . . .  AUTO     DATA   PTR      0001H  3
+  aPos . . . . . . . . . . . . . . . .  AUTO     DATA   U_CHAR   0005H  1
+  c. . . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0004H  1
+IE . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00A8H  1
+buttonCodes. . . . . . . . . . . . . .  STATIC   CODE   ARRAY    0080H  29
+size_t . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+IP . . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00B8H  1
+_I2C_Write_Byte. . . . . . . . . . . .  EXTERN   CODE   PROC     -----  -----
+TM1650TypeDef. . . . . . . . . . . . .  * TAG *  -----  STRUCT   -----  26
+  iPosition. . . . . . . . . . . . . .  MEMBER   -----  PTR      0000H  3
+  iActive. . . . . . . . . . . . . . .  MEMBER   -----  CHAR     0003H  1
+  iNumDigits . . . . . . . . . . . . .  MEMBER   -----  U_INT    0004H  2
+  iBrightness. . . . . . . . . . . . .  MEMBER   -----  U_INT    0006H  2
+  iString. . . . . . . . . . . . . . .  MEMBER   -----  ARRAY    0008H  9
+  iBuffer. . . . . . . . . . . . . . .  MEMBER   -----  ARRAY    0011H  5
+  iCtrl. . . . . . . . . . . . . . . .  MEMBER   -----  ARRAY    0016H  4
+UINT32 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+UINT16 . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_INT    -----  2
+SCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0098H  1
+TCON . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   0088H  1
+SCON_1 . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00F8H  1
+_tm1650_displayOn. . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  tm . . . . . . . . . . . . . . . . .  AUTO     XDATA  PTR      0000H  3
+_isButtonCodeValid . . . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  c. . . . . . . . . . . . . . . . . .  * REG *  DATA   U_CHAR   0007H  1
+  i. . . . . . . . . . . . . . . . . .  * REG *  DATA   U_CHAR   0006H  1
+uint8_t. . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+_tm1650_displayChar_withDot. . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  tm . . . . . . . . . . . . . . . . .  AUTO     DATA   PTR      0001H  3
+  aPos . . . . . . . . . . . . . . . .  AUTO     DATA   U_CHAR   0005H  1
+  c. . . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0004H  1
+ADCCON0. . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00E8H  1
+I2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C0H  1
+BIT. . . . . . . . . . . . . . . . . .  TYPEDEF  -----  BIT      -----  1
+_tm1650_displaySegment . . . . . . . .  PUBLIC   CODE   PROC     0000H  -----
+  tm . . . . . . . . . . . . . . . . .  AUTO     DATA   PTR      0001H  3
+  aPos . . . . . . . . . . . . . . . .  AUTO     DATA   U_CHAR   0005H  1
+  c. . . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0004H  1
+  i. . . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0005H  1
+_tm1650_displayChar_withDot_underMask.  PUBLIC   CODE   PROC     0000H  -----
+  tm . . . . . . . . . . . . . . . . .  AUTO     DATA   PTR      0001H  3
+  aPos . . . . . . . . . . . . . . . .  AUTO     DATA   U_CHAR   0005H  1
+  c. . . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0004H  1
+  mask . . . . . . . . . . . . . . . .  AUTO     XDATA  U_CHAR   0005H  1
+T2CON. . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00C8H  1
+wchar_t. . . . . . . . . . . . . . . .  TYPEDEF  -----  CHAR     -----  1
+UINT8. . . . . . . . . . . . . . . . .  TYPEDEF  -----  U_CHAR   -----  1
+TM1650_CDigits . . . . . . . . . . . .  STATIC   CODE   ARRAY    0000H  128
+PSW. . . . . . . . . . . . . . . . . .  SFR      DATA   U_CHAR   00D0H  1
+uint32_t . . . . . . . . . . . . . . .  TYPEDEF  -----  U_LONG   -----  4
+
+C51 COMPILER V9.60.7.0   TM11650                                                           09/27/2024 10:00:24 PAGE 4   
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    290    ----
+   CONSTANT SIZE    =    157    ----
+   XDATA SIZE       =   ----      25
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
